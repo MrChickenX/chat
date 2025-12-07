@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        /* ===========
+        THEME STYLES
+        =========== */
+
+        :root {
+            --background: #ffffff;
+            --accent: #00aeff;
+            --font-color: #333333;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --danger: #ff4444;
+            --code-bg: #ababab;
+            --border-color: #363940;
+            --theme-img-color: #ffffff;
+            --message-box-color: rgba(0, 0, 0, 0.15);
+        }
+
+        body {
+            background: var(--background);
+            color: var(--font-color);
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: auto minmax(auto, 320px) 1fr;
+            gap: 0px;
+            max-height: auto;
+            height: 100vh;
+        }
+
+        .content>aside:first-child {
+            justify-content: flex-end;
+        }
+
+        .content>aside:nth-child(2) {
+            background: var(--theme-img-color);
+        }
+
+
+        main {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: auto;
+        }
+
+
+        /* ===========
+        ASIDE STYLES
+        =========== */
+
+        aside {
+            background-color: var(--background);
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            border-right: 2px solid var(--border-color);
+            overflow: auto;
+        }
+
+        /* ===========
+        MINI SIDEBAR
+        =========== */
+
+        .profile-btn {
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            width: 40px;
+            height: 40px;
+        }
+
+        .profile-btn:hover {
+            background: rgba(0, 174, 255, 0.1);
+            cursor: pointer;
+        }
+
+        .profile-btn svg {
+            fill: var(--accent);
+        }
+
+        /* ===========
+        INPUT STYLES
+        =========== */
+
+        input[type="text"] {
+            padding: 8px;
+            border-radius: 4px;
+            outline: none;
+            border: none;
+            background: var(--background);
+            color: var(--font-color);
+        }
+
+
+        /* ===========
+        SEARCH BAR STYLES
+        =========== */
+
+        .search-svg {
+            fill: var(--font-color);
+            margin-left: 4px;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            background: var(--background);
+        }
+
+        .search-box:focus-within {
+            border-bottom: var(--accent) 2px solid;
+        }
+
+        /* ===========
+        CONTACT HEADER STYLES
+        =========== */
+
+        .contact-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* ===========
+        CONTACT CARD
+        =========== */
+
+        .contacts {
+            margin-top: 8px;
+            border-radius: 8px;
+            overflow-y: auto;
+            height: auto
+        }
+
+        .contact {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 2px;
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .contact:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 100%;
+            margin: 4px;
+        }
+
+        .contact>div {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-rows: auto auto;
+            gap: 4px 8px;
+            width: 100%;
+            align-items: center;
+        }
+
+        .contact>div a:nth-child(2),
+        .contact>div a:nth-child(4) {
+            justify-self: right;
+        }
+
+        .contact-name {
+            font-weight: bold;
+        }
+
+        .contact-activity {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .new-msg-count {
+            background: var(--accent);
+            border-radius: 100%;
+            width: 20px;
+            visibility: hidden;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .new-msg-count.new {
+            visibility: visible;
+            font-weight: bold;
+        }
+
+        .last-msg-data {
+            font-size: 12px;
+        }
+
+        .last-msg-data.new {
+            color: var(--accent);
+            font-weight: bold;
+        }
+
+        .theme-img-box {
+            margin-top: auto;
+        }
+
+        .theme-img {
+            width: 104%;
+            margin-left: -8px;
+            border-top: 2px solid var(--theme-img-color);
+            border-bottom: 2px solid var(--background);
+            border-right: 2px solid var(--border-color);
+            border-left: 2px solid var(--border-color);
+            margin-bottom: -8px;
+
+        }
+
+        /* ===========
+        HEADER
+        =========== */
+
+        main header {
+            border-bottom: 2px solid var(--border-color);
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: left;
+        }
+
+        .current-contact {
+            display: flex;
+            flex-direction: column;
+            margin-left: 4px;
+        }
+
+        .current-contact-name {
+            font-weight: bold;
+        }
+
+        /* ===========
+        FOOTER
+        =========== */
+
+        footer {
+            border-top: 2px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            margin-top: auto;
+            gap: 8px;
+            padding: 8px;
+            align-items: center;
+            background: var(--background);
+        }
+
+        footer textarea {
+            flex: 1;
+            min-width: 0;
+            resize: none;
+            overflow-y: auto;
+            line-height: 20px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            font-size: 16px;
+            box-sizing: border-box;
+            background: var(--background);
+            color: var(--font-color);
+        }
+
+        footer textarea:focus {
+            outline: none;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        #send-btn {
+            display: none;
+        }
+
+        #mic-btn,
+        #send-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ===========
+        SETTINGS
+        =========== */
+
+        .settings {
+            position: fixed;
+            inset: 0;
+            display: none;
+            background: white;
+            z-index: 200;
+            margin-left: 54px;
+            grid-template-columns: 300px 1fr;
+            overflow: hidden;
+            transition: opacity 220ms ease;
+            opacity: 0;
+        }
+
+
+        .settings.open {
+            display: grid;
+            opacity: 1;
+        }
+
+        .settings-nav {
+            padding: 12px;
+            border-right: 2px solid var(--border-color);
+        }
+
+        .settings-nav ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .settings-nav li {
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-left: 2px solid rgba(0, 0, 0, 0);
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .settings-nav li:hover {
+            background: rgba(0, 0, 0, 0.05);
+            border-left: 2px solid var(--accent);
+        }
+
+        .settings-nav li.selected {
+            background: rgba(0, 0, 0, 0.06);
+            border-left: 2px solid var(--accent);
+        }
+
+        .settings svg {
+            fill: var(--accent);
+            margin-left: 4px;
+        }
+
+        .settings-category {
+            margin-left: 6px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .settings li {
+            list-style-type: none;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            border: 2px solid rgba(0, 0, 0, 0);
+            cursor: pointer;
+        }
+
+        .settings li:hover {
+            background: rgba(0, 0, 0, 0.05);
+            border-left: 2px solid var(--accent);
+        }
+
+        .settings-content {
+            position: relative;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        .settings-section {
+            position: absolute;
+            inset: 0;
+            padding: 20px 24px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            opacity: 0;
+            transform: translateY(8px);
+            pointer-events: none;
+            transition: opacity 260ms cubic-bezier(.2, .9, .2, 1), transform 260ms cubic-bezier(.2, .9, .2, 1);
+            will-change: opacity, transform;
+        }
+
+        .settings-section.active {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .settings svg {
+            fill: var(--accent);
+            margin-left: 4px;
+        }
+
+        .settings ul {
+            display: flex;
+            align-items: left;
+            flex-direction: column;
+            padding: 4px;
+        }
+
+        .settings-category {
+            margin-left: 6px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        /* ===========
+        SETTINGS CONTENT
+        =========== */
+
+        .settings header {
+            border-bottom: 2px solid var(--accent);
+            padding: 4px;
+        }
+
+        .settings-title {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .setting {
+            margin-top: 12px;
+        }
+
+        .setting-title {
+            font-weight: bold;
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        .setting-content {
+            display: grid;
+            grid-template-columns: 60% 10% auto;
+            align-items: center;
+        }
+
+        .settings-btn {
+            color: var(--font-color);
+            background: var(--accent);
+            border: none;
+            border-radius: 12px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .settings-btn.danger:hover {
+            background: #ff6060;
+        }
+
+        .settings-btn:hover {
+            background: #3ac1ff;
+        }
+
+        .danger {
+            background: var(--danger);
+        }
+
+        .theme-box img {
+            display: block;
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            border-radius: 6px;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04) inset;
+        }
+
+        .theme-box {
+            display: grid;
+            width: 224px;
+            display: flex;
+            flex-direction: column;
+            width: 224px;
+            flex: 0 0 224px;
+            gap: 8px;
+
+        }
+
+        .theme-box img {
+            display: block;
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            border-radius: 8px;
+            transition: box-shadow 150ms ease, transform 120ms ease, border-color 150ms ease;
+            border: 2px solid var(--background);
+            cursor: pointer;
+            outline: none;
+        }
+
+        .theme-box.selected img {
+            border-color: var(--accent);
+        }
+
+        .theme-name {
+            padding: 4px;
+            font-weight: bold;
+        }
+
+        .theme-box-subtiles {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .themes-row {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+        }
+
+        .theme-container {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        /* ===========
+        OTHER
+        =========== */
+
+        .code {
+            background: var(--code-bg);
+            border-radius: 4px;
+            margin: 2px;
+            padding: 2px;
+            justify-self: center;
+        }
+
+        select {
+            color: var(--font-color);
+            background: var(--accent);
+            border: none;
+            border-radius: 4px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        /* ===========
+        MESSAGES
+        =========== */
+
+        .chat-messages {
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .message-box {
+            display: inline-block;
+            width: fit-content;
+            background: var(--message-box-color);
+            padding: 8px;
+            border-radius: 12px;
+            margin: 8px;
+        }
+
+        .message-box.my {
+            background: var(--accent);
+        }
+
+        .message-time {
+            font-size: 12px;
+            margin-left: 6px;
+        }
+
+        .message-file {
+            display: flex;
+            align-items: center;
+        }
+
+        .file-icon {
+            width: 48px;
+        }
+
+        .file-name {
+            margin-left: 4px;
+        }
+
+        .file-size {
+            font-size: 12px;
+            margin-left: 4px;
+        }
+
+        .file-download {
+            margin-top: 4px;
+            background: var(--message-box-color);
+            width: 100%;
+            border: none;
+            padding: 4px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s ease, background 0.2s ease;
+            color: var(--font-color);
+        }
+
+        .file-download:hover {
+            background: rgba(0, 0, 0, 0.2);
+            transform: scale(1.025);
+        }
+
+        .file-property {
+            align-self: center;
+            margin-left: 6px;
+        }
+
+        .message-container {
+            display: flex;
+            align-items: flex-end;
+            margin-left: 8px;
+            margin-right: 8px;
+        }
+
+        .message-container.my {
+            align-self: flex-end;
+        }
+
+        .message-avatar {
+            width: 32px;
+            margin-bottom: 8px;
+        }
+
+        .message-date {
+            align-self: center;
+            background-color: var(--message-box-color);
+            border-radius: 6px;
+            padding: 4px;
+            margin-top: 8px;
+        }
+
+        .message-img {
+            max-width: 264px;
+            border-radius: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="content">
+        <aside>
+            <button class="profile-btn" id="profile-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                    viewBox="0 -960 960 960" width="24px" fill="#000000">
+                    <path
+                        d="M234-276q51-39 114-61.5T480-360q69 0 132 22.5T726-276q35-41 54.5-93T800-480q0-133-93.5-226.5T480-800q-133 0-226.5 93.5T160-480q0 59 19.5 111t54.5 93Zm246-164q-59 0-99.5-40.5T340-580q0-59 40.5-99.5T480-720q59 0 99.5 40.5T620-580q0 59-40.5 99.5T480-440Zm0 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q53 0 100-15.5t86-44.5q-39-29-86-44.5T480-280q-53 0-100 15.5T294-220q39 29 86 44.5T480-160Zm0-360q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm0-60Zm0 360Z" />
+                </svg></button>
+            <button class="profile-btn" id="settings-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                    viewBox="0 -960 960 960" width="24px" fill="#000000">
+                    <path
+                        d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z" />
+                </svg></button>
+            <button class="profile-btn" id="logout-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                    viewBox="0 -960 960 960" width="24px" fill="#000000">
+                    <path
+                        d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h280v80H200Zm440-160-55-58 102-102H360v-80h327L585-622l55-58 200 200-200 200Z" />
+                </svg>
+            </button>
+        </aside>
+        <aside>
+            <div class="contact-header">
+                <h2>Chats</h2>
+                <button class="profile-btn" id="add-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"
+                        fill="#000000">
+                        <path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z" />
+                    </svg>
+                </button>
+            </div>
+            <div class="search-box">
+                <svg class="search-svg" xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960"
+                    width="24px" fill="#000000">
+                    <path
+                        d="M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z" />
+                </svg><input type="text" placeholder="Suche nach Chats...">
+            </div>
+            <div class="contacts">
+                <div class="contact" id="contact-id">
+                    <img class="avatar" src="sources/avatars/avatar.png">
+                    <div>
+                        <a class="contact-name" id="contact-name">Klassenlehrer</a><a
+                            class="last-msg-data new">15:20</a>
+                        <a class="contact-activity" id="contact-activity">Du hast deine Hausaufgaben nicht gemacht.
+                            Könnstest du sie bis heuete Abend mir schicken.</a><a class="new-msg-count new"
+                            id="new-msg-count">2</a>
+                    </div>
+                </div>
+                <div class="contact" id="contact-id">
+                    <img class="avatar" src="sources/avatars/avatar.png">
+                    <div>
+                        <a class="contact-name" id="contact-name">Klassenchat</a><a
+                            class="last-msg-data new">gestern</a>
+                        <a class="contact-activity new" id="contact-activity">Alex: Wo befinden sich die Lernziele für
+                            die RZG Prüfung?</a><a class="new-msg-count new" id="new-msg-count">1</a>
+                    </div>
+                </div>
+                <div class="contact" id="contact-id">
+                    <img class="avatar" src="sources/avatars/avatar.png">
+                    <div>
+                        <a class="contact-name" id="contact-name">Mitschüler</a><a class="last-msg-data">03.12.2025</a>
+                        <a class="contact-activity" id="contact-activity">Wann ist die nächste Prüfung? Der Lehrer hat
+                            doch heute etwas gesagt.</a><a class="new-msg-count" id="new-msg-count"></a>
+                    </div>
+                </div>
+            </div>
+            <div class="theme-img-box">
+                <img src="sources/themes/images/autumn.png" class="theme-img">
+            </div>
+        </aside>
+        <main>
+            <header>
+                <img class="avatar" src="sources/avatars/avatar.png">
+                <div class="current-contact">
+                    <a class="current-contact-name">Alex</a>
+                    <a class="current-contact-status">Online</a>
+                </div>
+            </header>
+            <main class="chat-messages">
+                <div class="message-date">07.12.2025</div>
+                <div class="message-container">
+                    <img src="sources/avatars/avatar.png" class="message-avatar">
+                    <div class="message-box">
+                        <a>Nachricht eins.</a><a class="message-time">18:20</a>
+                    </div>
+                </div>
+                <div class="message-container my">
+                    <div class="message-box my">
+                        <a>Nachricht zwei.</a><a class="message-time">18:22</a>
+                    </div>
+                    <img src="sources/avatars/avatar.png" class="message-avatar">
+                </div>
+                <div class="message-container">
+                    <img src="sources/avatars/avatar.png" class="message-avatar">
+                    <div class="message-box">
+                        <div class="message-file">
+                            <img src="sources/icons/excel.png" class="file-icon">
+                            <div class="file-property">
+                                <a class="file-name">mappe-1.xls</a><a class="file-size">12 MB</a>
+                                <br>
+                                <button class="file-download">Download</button>
+                            </div>
+                        </div><a class="message-time">18:43</a>
+                    </div>
+                </div>
+                <div class="message-container my">
+                    <div class="message-box my">
+                        <div class="message-file">
+                            <img src="sources/icons/word.png" class="file-icon">
+                            <div class="file-property">
+                                <a class="file-name">dokument-1.docs</a><a class="file-size">2,5 MB</a>
+                                <br>
+                                <button class="file-download">Download</button>
+                            </div>
+                        </div><a class="message-time">19:12</a>
+                    </div>
+                    <img src="sources/avatars/avatar.png" class="message-avatar">
+                </div>
+                <div class="message-date">09.12.2025</div>
+                <div class="message-container my">
+                    <div class="message-box my">
+                        <img src="sources/themes/images/autumn.png" class="message-img"><a
+                            class="message-time">07:33</a>
+                    </div>
+                    <img src="sources/avatars/avatar.png" class="message-avatar">
+                </div>
+            </main>
+            <footer>
+                <button class="profile-btn" id="emoji-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                        viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M620-520q25 0 42.5-17.5T680-580q0-25-17.5-42.5T620-640q-25 0-42.5 17.5T560-580q0 25 17.5 42.5T620-520Zm-280 0q25 0 42.5-17.5T400-580q0-25-17.5-42.5T340-640q-25 0-42.5 17.5T280-580q0 25 17.5 42.5T340-520Zm140 260q68 0 123.5-38.5T684-400h-66q-22 37-58.5 58.5T480-320q-43 0-79.5-21.5T342-400h-66q25 63 80.5 101.5T480-260Zm0 180q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 320q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Z" />
+                    </svg></button>
+                <button class="profile-btn" id="attach-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                        viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q-1-42-29.5-71T400-800q-42 0-71 29t-29 71v370q-1 71 49 120.5T470-160q70 0 119-49.5T640-330v-390h80v390Z" />
+                    </svg></button>
+                <textarea id="message-input" rows="1" placeholder="Nachricht ..."></textarea>
+                <button class="profile-btn" id="mic-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                        viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M480-400q-50 0-85-35t-35-85v-240q0-50 35-85t85-35q50 0 85 35t35 85v240q0 50-35 85t-85 35Zm0-240Zm-40 520v-123q-104-14-172-93t-68-184h80q0 83 58.5 141.5T480-320q83 0 141.5-58.5T680-520h80q0 105-68 184t-172 93v123h-80Zm40-360q17 0 28.5-11.5T520-520v-240q0-17-11.5-28.5T480-800q-17 0-28.5 11.5T440-760v240q0 17 11.5 28.5T480-480Z" />
+                    </svg></button>
+                <button class="profile-btn" id="send-btn"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                        viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z" />
+                    </svg></button>
+            </footer>
+        </main>
+    </div>
+
+    <div class="settings" id="settingsPanel">
+        <aside class="settings-nav">
+            <ul>
+                <li data-target="allgemein" tabindex="0" role="button"><svg xmlns="http://www.w3.org/2000/svg"
+                        height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M0-160v-80h80v-600h800v600h80v80H0Zm400-80h160v-40H400v40ZM160-360h640v-400H160v400Zm320-200Z" />
+                    </svg><a class="settings-category">Allgemein</a></li>
+                <li data-target="personalisierung" tabindex="0" role="button"><svg xmlns="http://www.w3.org/2000/svg"
+                        height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M240-120q-45 0-89-22t-71-58q26 0 53-20.5t27-59.5q0-50 35-85t85-35q50 0 85 35t35 85q0 66-47 113t-113 47Zm0-80q33 0 56.5-23.5T320-280q0-17-11.5-28.5T280-320q-17 0-28.5 11.5T240-280q0 23-5.5 42T220-202q5 2 10 2h10Zm230-160L360-470l358-358q11-11 27.5-11.5T774-828l54 54q12 12 12 28t-12 28L470-360Zm-190 80Z" />
+                    </svg><a class="settings-category">Personalisierung</a></li>
+                <li data-target="info" tabindex="0" role="button"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                        viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z" />
+                    </svg><a class="settings-category">Info</a></li>
+            </ul>
+        </aside>
+        <aside class="settings-content">
+            <section id="allgemein" class="settings-section active">
+                <header>
+                    <a class="settings-title">Allgemein</a>
+                </header>
+                <main>
+                    <div class="setting">
+                        <a class="setting-title">Abmelden</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Sie werden von vom diesen Gerät überall abgemeldet.</a>
+                            <button class="settings-btn danger" id="logout-btn">Abmelden</button>
+                        </div>
+                    </div>
+                    <div class="setting">
+                        <a class="setting-title">Chatverlauf löschen</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Löschen Sie alle Chatverläufe.</a>
+                            <button class="settings-btn danger" id="logout-btn">Löschen</button>
+                        </div>
+                    </div>
+                </main>
+            </section>
+            <section id="personalisierung" class="settings-section">
+                <header>
+                    <a class="settings-title">Personalisierung</a>
+                </header>
+                <main>
+                    <div class="setting">
+                        <a class="setting-title">Thema</a>
+                        <div class="themes-row">
+                            <div id="theme-radio-group" role="radiogroup" class="theme-container">
+                                <div class="theme-box selected" role="radio" aria-checked="true" tabindex="0"
+                                    data-value="light" data-base="sources/themes/theme-light.png"
+                                    data-selected="sources/themes/theme-light-selected.png"
+                                    data-image="sources/themes/images/empty.png">
+                                    <img src="sources/themes/theme-light.png" alt="Theme Hell">
+                                    <div class="theme-box-subtiles">
+                                        <a class="theme-name">Hell</a>
+                                    </div>
+                                </div>
+                                <div class="theme-box" role="radio" aria-checked="false" tabindex="0" data-value="dark"
+                                    data-base="sources/themes/theme-dark.png"
+                                    data-selected="sources/themes/theme-dark-selected.png"
+                                    data-image="sources/themes/images/empty.png">
+                                    <img src="sources/themes/theme-dark.png" alt="Theme Dunkel">
+                                    <div class="theme-box-subtiles">
+                                        <a class="theme-name">Dunkel</a>
+                                    </div>
+                                </div>
+                                <div class="theme-box" role="radio" aria-checked="false" tabindex="0"
+                                    data-value="spring" data-base="sources/themes/theme-spring.png"
+                                    data-selected="sources/themes/theme-spring-selected.png"
+                                    data-image="sources/themes/images/spring.png">
+                                    <img src="sources/themes/theme-spring.png" alt="Theme Frühling">
+                                    <div class="theme-box-subtiles">
+                                        <a class="theme-name">Frühling</a>
+                                    </div>
+                                </div>
+                                <div class="theme-box" role="radio" aria-checked="false" tabindex="0"
+                                    data-value="summer" data-base="sources/themes/theme-summer.png"
+                                    data-selected="sources/themes/theme-summer-selected.png"
+                                    data-image="sources/themes/images/summer.png">
+                                    <img src="sources/themes/theme-summer.png" alt="Theme Sommer">
+                                    <div class="theme-box-subtiles">
+                                        <a class="theme-name">Sommer</a>
+                                    </div>
+                                </div>
+                                <div class="theme-box" role="radio" aria-checked="false" tabindex="0"
+                                    data-value="autumn" data-base="sources/themes/theme-autumn.png"
+                                    data-selected="sources/themes/theme-autumn-selected.png"
+                                    data-image="sources/themes/images/autumn.png">
+                                    <img src="sources/themes/theme-autumn.png" alt="Theme Herbst">
+                                    <div class="theme-box-subtiles">
+                                        <a class="theme-name">Herbst</a>
+                                    </div>
+                                </div>
+                                <div class="theme-box" role="radio" aria-checked="false" tabindex="0"
+                                    data-value="winter" data-base="sources/themes/theme-winter.png"
+                                    data-selected="sources/themes/theme-winter-selected.png"
+                                    data-image="sources/themes/images/winter.png">
+                                    <img src="sources/themes/theme-winter.png" alt="Theme Winter">
+                                    <div class="theme-box-subtiles">
+                                        <a class="theme-name">Winter</a>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="selected-theme" name="theme" value="dark">
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </section>
+            <section id="info" class="settings-section">
+                <header>
+                    <a class="settings-title">Info</a>
+                </header>
+                <main>
+                    <div class="setting">
+                        <a class="setting-title">Ihre Daten</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Version:</a><a class="code">v1.0.0</a>
+                        </div>
+                        <div class="setting-content">
+                            <a class="setting-text">Ihre Sitzungs ID:</a><a class="code">1</a>
+                        </div>
+                    </div>
+                    <div class="setting">
+                        <a class="setting-title">Lokaler Speicher</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Ihre heruntergeladene Menge:</a><a class="code">100,12 MB</a>
+                        </div>
+                    </div>
+                </main>
+            </section>
+        </aside>
+    </div>
+</body>
+
+<script>
+
+    const profileBtn = document.getElementById('profile-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const addBtn = document.getElementById('add-btn');
+
+    window.THEME_VARIABLES = {
+        light: {
+            "--background": "#ffffff",
+            "--accent": "#00aeff",
+            "--font-color": "#333333",
+            "--border-color": "#ebebeb",
+            "--theme-img-color": "#ffffff",
+            "--message-box-color": "rgba(0, 0, 0, 0.15)",
+        },
+        dark: {
+            "--background": "#272a2f",
+            "--accent": "#00aeff",
+            "--font-color": "#ffffff",
+            "--border-color": "#363940",
+            "--theme-img-color": "#272a2f",
+            "--message-box-color": "rgba(255, 255, 255, 0.15)",
+        },
+        spring: {
+            "--background": "#ffffff",
+            "--accent": "#a2c173",
+            "--font-color": "#333333",
+            "--border-color": "#ebebeb",
+            "--theme-img-color": "#fff8d3",
+            "--message-box-color": "rgba(0, 0, 0, 0.15)",
+        },
+        summer: {
+            "--background": "#ffffff",
+            "--accent": "#cb5a34",
+            "--font-color": "#333333",
+            "--border-color": "#ebebeb",
+            "--theme-img-color": "#ffeeda",
+            "--message-box-color": "rgba(0, 0, 0, 0.15)",
+        },
+        autumn: {
+            "--background": "#ffffff",
+            "--accent": "#ad5f28",
+            "--font-color": "#333333",
+            "--border-color": "#ebebeb",
+            "--theme-img-color": "#f8e7c9",
+            "--message-box-color": "rgba(0, 0, 0, 0.15)",
+        },
+        winter: {
+            "--background": "#ffffff",
+            "--accent": "#228ba0",
+            "--font-color": "#333333",
+            "--border-color": "#ebebeb",
+            "--theme-img-color": "#ddf2f7",
+            "--message-box-color": "rgba(0, 0, 0, 0.15)",
+        }
+    };
+
+    /* ===========
+    MESSAGE INPUT ROWS
+    =========== */
+
+    (function () {
+        const textarea = document.getElementById('message-input');
+        if (!textarea) return;
+
+        const maxRows = 5;
+
+        function adjustHeight() {
+            textarea.style.height = 'auto';
+
+            const style = getComputedStyle(textarea);
+            let lineHeight = parseFloat(style.lineHeight);
+            if (Number.isNaN(lineHeight)) {
+                lineHeight = parseFloat(style.fontSize) * 1.2 || 20;
+            }
+
+            const padding =
+                parseFloat(style.paddingTop || 0) + parseFloat(style.paddingBottom || 0);
+            const border =
+                parseFloat(style.borderTopWidth || 0) + parseFloat(style.borderBottomWidth || 0);
+            const maxHeight = lineHeight * maxRows + padding + border;
+            const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+            textarea.style.height = newHeight + 'px';
+            textarea.style.overflowY = (textarea.scrollHeight > maxHeight) ? 'auto' : 'hidden';
+        }
+
+        textarea.addEventListener('input', adjustHeight);
+        adjustHeight();
+    })();
+
+    /* ===========
+    MIC SEND BUTTON CHANGE
+    =========== */
+
+    (function () {
+        const ta = document.getElementById('message-input');
+        const mic = document.getElementById('mic-btn');
+        const send = document.getElementById('send-btn');
+
+        if (!ta || !mic || !send) return;
+
+        function updateButtons() {
+            const hasText = ta.value.trim().length > 0;
+
+            if (hasText) {
+                mic.style.display = 'none';
+                send.style.display = 'inline-flex';
+                send.removeAttribute('aria-hidden');
+                mic.setAttribute('aria-hidden', 'true');
+            } else {
+                mic.style.display = 'inline-flex';
+                send.style.display = 'none';
+                mic.removeAttribute('aria-hidden');
+                send.setAttribute('aria-hidden', 'true');
+            }
+        }
+
+        ['input', 'paste', 'cut', 'change'].forEach(ev => ta.addEventListener(ev, updateButtons));
+
+        ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (ta.value.trim().length > 0) {
+                    send.click();
+                }
+            }
+        });
+
+        send.addEventListener('click', () => {
+            const text = ta.value.trim();
+            if (!text) return;
+
+            console.log('Sende Nachricht:', text);
+
+            ta.value = '';
+            updateButtons();
+            ta.focus();
+            ta.dispatchEvent(new Event('input'));
+        });
+
+        updateButtons();
+    })();
+
+    /* ===========
+    SETTINGS
+    =========== */
+
+    (function () {
+        const settingsBtn = document.getElementById('settings-btn');
+        if (!settingsBtn) return;
+
+        let settings = document.querySelector('.settings');
+        if (!settings) {
+            settings = document.createElement('div');
+            settings.className = 'settings';
+            settings.innerHTML = `
+      <aside role="dialog" aria-modal="true" aria-label="Einstellungen">
+        <div class="settings-header">
+          <h3 style="margin:0; font-size:16px;">Einstellungen</h3>
+          <button class="close-btn" aria-label="Schliessen">&times;</button>
+        </div>
+        <div class="settings-body">
+          <!-- Hier kannst du deine Einstellungen einfügen -->
+          <p>Platz für Einstellungen...</p>
+        </div>
+      </aside>
+    `;
+            document.body.appendChild(settings);
+        }
+
+        const closeBtn = settings.querySelector('.close-btn');
+        const aside = settings.querySelector('aside');
+
+        function openSettings() {
+            settings.classList.add('open');
+            aside.setAttribute('tabindex', '-1');
+            aside.focus();
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeSettings() {
+            settings.classList.remove('open');
+            document.body.style.overflow = '';
+            settingsBtn.focus();
+        }
+
+        settingsBtn.addEventListener('click', () => {
+            if (settings.classList.contains('open')) closeSettings();
+            else openSettings();
+        });
+
+        settings.addEventListener('click', (e) => {
+            if (e.target === settings) closeSettings();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && settings.classList.contains('open')) {
+                closeSettings();
+            }
+        });
+    })();
+
+    /* ===========
+    THEME-SELECTION
+    =========== */
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const group = document.getElementById('theme-radio-group');
+        const hiddenInput = document.getElementById('selected-theme');
+        const ROOT = document.documentElement;
+        const TRANSITION_CLASS = 'theme-transition';
+        const TRANSITION_MS = 320;
+
+        if (!group) return;
+
+        function parseDataVars(str) {
+            if (!str) return null;
+            try {
+                return JSON.parse(str);
+            } catch (e) {
+                console.warn('Fehler beim Parsen von data-vars:', e);
+                return null;
+            }
+        }
+
+        function applyVars(vars = {}, withTransition = true) {
+            if (withTransition) {
+                ROOT.classList.add(TRANSITION_CLASS);
+                clearTimeout(applyVars._timeout);
+                applyVars._timeout = setTimeout(() => {
+                    ROOT.classList.remove(TRANSITION_CLASS);
+                }, TRANSITION_MS + 50);
+            }
+            Object.entries(vars).forEach(([key, value]) => {
+                if (typeof key === 'string' && key.startsWith('--')) {
+                    ROOT.style.setProperty(key, value);
+                }
+            });
+        }
+
+        function clearVarsForTheme(themeVars = {}) {
+            // Optional: falls du Variablen zuruecksetzen willst, die vorher gesetzt wurden,
+            // kannst du hier keys loeschen oder auf default setzen. Aktuell belassen wir sie.
+        }
+
+        function selectTheme(box, withTransition = true) {
+            if (!box) return;
+            const boxes = group.querySelectorAll('.theme-box');
+            boxes.forEach(b => {
+                const img = b.querySelector('img');
+                const base = b.dataset.base;
+                b.classList.remove('selected');
+                b.setAttribute('aria-checked', 'false');
+                if (img && base) img.src = base;
+            });
+
+            const img = box.querySelector('img');
+            const sel = box.dataset.selected;
+            box.classList.add('selected');
+            box.setAttribute('aria-checked', 'true');
+            if (img && sel) img.src = sel;
+
+            if (hiddenInput) hiddenInput.value = box.dataset.value || '';
+
+            let vars = null;
+            if (box.dataset.vars) {
+                vars = parseDataVars(box.dataset.vars);
+            }
+            if (!vars && window.THEME_VARIABLES && box.dataset.value) {
+                vars = window.THEME_VARIABLES[box.dataset.value];
+            }
+
+            if (vars && typeof vars === 'object') {
+                applyVars(vars, withTransition);
+            }
+        }
+
+        group.addEventListener('click', (e) => {
+            const box = e.target.closest('.theme-box');
+            if (!box) return;
+            selectTheme(box, true);
+        });
+
+        group.addEventListener('keydown', (e) => {
+            const focused = document.activeElement;
+            if (!focused || !focused.classList.contains('theme-box')) return;
+
+            if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                selectTheme(focused, true);
+                return;
+            }
+
+            const boxes = Array.from(group.querySelectorAll('.theme-box'));
+            const idx = boxes.indexOf(focused);
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = boxes[(idx + 1) % boxes.length];
+                next.focus();
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = boxes[(idx - 1 + boxes.length) % boxes.length];
+                prev.focus();
+            }
+        });
+
+        const initial = group.querySelector('.theme-box.selected') || group.querySelector('.theme-box');
+        if (initial) selectTheme(initial, false);
+
+        function selectTheme(box, withTransition = true) {
+            if (!box) return;
+
+            // alte Logik für ausgewählte Box
+            const boxes = group.querySelectorAll('.theme-box');
+            boxes.forEach(b => {
+                b.classList.remove('selected');
+                b.setAttribute('aria-checked', 'false');
+                const imgEl = b.querySelector('img');
+                if (imgEl && b.dataset.base) imgEl.src = b.dataset.base;
+            });
+
+            box.classList.add('selected');
+            box.setAttribute('aria-checked', 'true');
+            const selImg = box.dataset.selected;
+            const imgEl = box.querySelector('img');
+            if (imgEl && selImg) imgEl.src = selImg;
+
+            if (hiddenInput) hiddenInput.value = box.dataset.value || '';
+
+            // ---- Bild in theme-img-box wechseln oder verstecken ----
+            const themeImgBox = document.querySelector('.theme-img-box .theme-img');
+            if (themeImgBox) {
+                const val = box.dataset.value;
+                if (val === "light" || val === "dark") {
+                    themeImgBox.style.display = "none"; // Bild verstecken
+                } else if (box.dataset.image) {
+                    themeImgBox.src = box.dataset.image;
+                    themeImgBox.style.display = "block"; // Bild anzeigen
+                }
+            }
+
+            // CSS-Variablen (falls gesetzt)
+            let vars = box.dataset.vars ? JSON.parse(box.dataset.vars) : (window.THEME_VARIABLES?.[box.dataset.value] || {});
+            if (vars) applyVars(vars, withTransition);
+        }
+    });
+
+    /* ===========
+    SETTINGS-SIDEBAR
+    =========== */
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const navItems = document.querySelectorAll('.settings [data-target]');
+        const sections = document.querySelectorAll('.settings-section');
+
+        if (!navItems.length || !sections.length) return;
+
+        function showSection(id) {
+            sections.forEach(s => s.classList.toggle('active', s.id === id));
+            navItems.forEach(li => li.classList.toggle('selected', li.dataset.target === id));
+        }
+
+        navItems.forEach(li => {
+            li.addEventListener('click', () => showSection(li.dataset.target));
+            li.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    showSection(li.dataset.target);
+                }
+            });
+        });
+
+        // Initiale Auswahl: wenn eine Section .active hat, zeige diese, sonst erste Section
+        const initial = document.querySelector('.settings-section.active') || sections[0];
+        if (initial) showSection(initial.id);
+    });
+</script>
+
+</html>
