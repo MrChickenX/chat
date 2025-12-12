@@ -1216,16 +1216,34 @@
             }
         });
 
-        send.addEventListener('click', () => {
+        let isSending = false; // global / im closure
+        let attachedFile = null; // falls du Attachments unterstützt
+
+        send.addEventListener('click', async (e) => {
+            if (isSending) return;
             const text = ta.value.trim();
-            if (!text) return;
 
-            console.log('Sende Nachricht:', text);
+            // falls du auch Datei-Versand willst: erlauben, wenn text OR file vorhanden
+            if (!text && !attachedFile) return;
 
-            ta.value = '';
-            updateButtons();
-            ta.focus();
-            ta.dispatchEvent(new Event('input'));
+            isSending = true;
+            send.disabled = true;
+
+            try {
+                await sendMessage(text, attachedFile);
+
+                ta.value = '';
+                attachedFile = null;
+                updateButtons();
+                ta.focus();
+                ta.dispatchEvent(new Event('input'));
+            } catch (err) {
+                console.error('Senden fehlgeschlagen', err);
+                alert('Senden fehlgeschlagen');
+            } finally {
+                isSending = false;
+                send.disabled = false;
+            }
         });
 
         updateButtons();
