@@ -20,6 +20,19 @@
             --border-color: #363940;
             --theme-img-color: #ffffff;
             --message-box-color: rgba(0, 0, 0, 0.15);
+            --verified-color: #00aeff;
+        }
+
+        ::-webkit-scrollbar {
+            background: var(--background);
+            width: 4px;
+            height: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 12px;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.2);
         }
 
         body {
@@ -183,6 +196,15 @@
 
         .contact-name {
             font-weight: bold;
+            align-items: center;
+            display: flex;
+        }
+
+        .contact-name svg {
+            fill: var(--accent);
+            margin-left: 4px;
+            width: 20px;
+            height: 20px;
         }
 
         .contact-activity {
@@ -300,7 +322,8 @@
         SETTINGS
         =========== */
 
-        .settings {
+        .settings,
+        .profile {
             position: fixed;
             inset: 0;
             display: none;
@@ -314,17 +337,20 @@
         }
 
 
-        .settings.open {
+        .settings.open,
+        .profile.open {
             display: grid;
             opacity: 1;
         }
 
-        .settings-nav {
+        .settings-nav,
+        .profile-nav {
             padding: 12px;
             border-right: 2px solid var(--border-color);
         }
 
-        .settings-nav ul {
+        .settings-nav ul,
+        .profile-nav ul {
             list-style: none;
             padding: 0;
             margin: 0;
@@ -333,7 +359,8 @@
             gap: 6px;
         }
 
-        .settings-nav li {
+        .settings-nav li,
+        .profile-nav li {
             padding: 8px;
             display: flex;
             align-items: center;
@@ -343,28 +370,33 @@
             border-radius: 6px;
         }
 
-        .settings-nav li:hover {
+        .settings-nav li:hover,
+        .profile-nav li:hover {
             background: rgba(0, 0, 0, 0.05);
             border-left: 2px solid var(--accent);
         }
 
+        .settings-nav li.selected,
         .settings-nav li.selected {
             background: rgba(0, 0, 0, 0.06);
             border-left: 2px solid var(--accent);
         }
 
-        .settings svg {
+        .settings svg,
+        .profile svg {
             fill: var(--accent);
             margin-left: 4px;
         }
 
-        .settings-category {
+        .settings-category,
+        .profile-category {
             margin-left: 6px;
             font-size: 18px;
             font-weight: bold;
         }
 
-        .settings li {
+        .settings li,
+        .profile li {
             list-style-type: none;
             padding: 4px;
             display: flex;
@@ -373,18 +405,21 @@
             cursor: pointer;
         }
 
-        .settings li:hover {
+        .settings li:hover,
+        .profile li:hover {
             background: rgba(0, 0, 0, 0.05);
             border-left: 2px solid var(--accent);
         }
 
-        .settings-content {
+        .settings-content,
+        .profile-content {
             position: relative;
             overflow: hidden;
             height: 100%;
         }
 
-        .settings-section {
+        .settings-section,
+        .profile-section {
             position: absolute;
             inset: 0;
             padding: 20px 24px;
@@ -398,40 +433,46 @@
             will-change: opacity, transform;
         }
 
-        .settings-section.active {
+        .settings-section.active,
+        .profile-section.active {
             opacity: 1;
             transform: translateY(0);
             pointer-events: auto;
         }
 
-        .settings svg {
+        .settings svg,
+        .profile svg {
             fill: var(--accent);
             margin-left: 4px;
         }
 
-        .settings ul {
+        .settings ul,
+        .profile ul {
             display: flex;
             align-items: left;
             flex-direction: column;
             padding: 4px;
         }
 
-        .settings-category {
+        .settings-category,
+        .profile-category {
             margin-left: 6px;
             font-size: 18px;
             font-weight: bold;
         }
 
         /* ===========
-        SETTINGS CONTENT
+        PANEL CONTENT
         =========== */
 
-        .settings header {
+        .settings header,
+        .profile header {
             border-bottom: 2px solid var(--accent);
             padding: 4px;
         }
 
-        .settings-title {
+        .settings-title,
+        .profile-title {
             font-size: 32px;
             font-weight: bold;
         }
@@ -440,16 +481,22 @@
             margin-top: 12px;
         }
 
+        .setting-content.no-col3>*:nth-child(2) {
+            grid-column: 2 / 4;
+        }
+
         .setting-title {
             font-weight: bold;
             font-size: 24px;
             margin-bottom: 4px;
         }
 
-        .setting-content {
+        .setting-content,
+        .profile-content {
             display: grid;
-            grid-template-columns: 60% 10% auto;
+            grid-template-columns: 60% 20% 96px;
             align-items: center;
+            margin-top: 8px;
         }
 
         .settings-btn {
@@ -695,8 +742,11 @@
                 <div class="contact" id="contact-id">
                     <img class="avatar" src="sources/avatars/avatar.png">
                     <div>
-                        <a class="contact-name" id="contact-name">Klassenlehrer</a><a
-                            class="last-msg-data new">15:20</a>
+                        <a class="contact-name" id="contact-name">Klassenlehrer<svg xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 -960 960 960" fill="#000000">
+                                <path
+                                    d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm94-278 226-226-56-58-170 170-86-84-56 56 142 142Z" />
+                            </svg></a><a class="last-msg-data new">15:20</a>
                         <a class="contact-activity" id="contact-activity">Du hast deine Hausaufgaben nicht gemacht.
                             Könnstest du sie bis heuete Abend mir schicken.</a><a class="new-msg-count new"
                             id="new-msg-count">2</a>
@@ -805,6 +855,97 @@
                     </svg></button>
             </footer>
         </main>
+    </div>
+
+    <div class="profile" id="profilePanel">
+        <aside class="profile-nav">
+            <ul>
+                <li data-target="allgemein" tabindex="0" role="button"><svg xmlns="http://www.w3.org/2000/svg"
+                        height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M234-276q51-39 114-61.5T480-360q69 0 132 22.5T726-276q35-41 54.5-93T800-480q0-133-93.5-226.5T480-800q-133 0-226.5 93.5T160-480q0 59 19.5 111t54.5 93Zm246-164q-59 0-99.5-40.5T340-580q0-59 40.5-99.5T480-720q59 0 99.5 40.5T620-580q0 59-40.5 99.5T480-440Zm0 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z" />
+                    </svg><a class="profile-category">Profil</a></li>
+                <li data-target="personalisierung" tabindex="0" role="button"><svg xmlns="http://www.w3.org/2000/svg"
+                        height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M480-440q58 0 99-41t41-99q0-58-41-99t-99-41q-58 0-99 41t-41 99q0 58 41 99t99 41ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-46q-54-53-125.5-83.5T480-360q-83 0-154.5 30.5T200-246v46Z" />
+                    </svg><a class="profile-category">Account</a></li>
+                <li data-target="info" tabindex="0" role="button"><svg xmlns="http://www.w3.org/2000/svg" height="24px"
+                        viewBox="0 -960 960 960" width="24px" fill="#000000">
+                        <path
+                            d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z" />
+                    </svg><a class="profile-category">Benutzerinfo</a></li>
+            </ul>
+        </aside>
+        <aside class="profile-content">
+            <section id="allgemein" class="profile-section active">
+                <header>
+                    <a class="profile-title">Profil</a>
+                </header>
+                <main>
+                    <div class="setting">
+                        <a class="setting-title">Profil</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Dein Benutzername:</a>
+                            <span class="username-display"></span>
+                            <button class="settings-btn" id="edit-username-btn">Bearbeiten</button>
+                        </div>
+                        <div class="setting-content">
+                            <a class="setting-text">Dein Nickname:</a>
+                            <span id="nickname-display" class="nickname-display "></span>
+                            <button class="settings-btn" id="edit-nickname-btn">Bearbeiten</button>
+                        </div>
+                        <div class="setting-content">
+                            <a class="setting-text">ID:</a>
+                            <span id="user-id" class="code" data-userid></span>
+                        </div>
+                        <div class="setting-content">
+                            <a class="setting-text">Verifiziert:</a>
+                            <span id="user-verified" data-verified></span>
+                            <button class="settings-btn" id="send-verification-btn">Anfordern</button>
+                        </div>
+                    </div>
+                    <div class="setting">
+                        <a class="setting-title">Chatverlauf löschen</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Löschen Sie alle Chatverläufe auf dem Account.</a>
+                            <button class="settings-btn danger" id="chat-msg-delete">Löschen</button>
+                        </div>
+                    </div>
+                </main>
+            </section>
+            <section id="personalisierung" class="profile-section">
+                <header>
+                    <a class="profile-title">Personalisierung</a>
+                </header>
+                <main>
+                    <div class="setting">
+                    </div>
+                </main>
+            </section>
+            <section id="info" class="profile-section">
+                <header>
+                    <a class="profile-title">Info</a>
+                </header>
+                <main>
+                    <div class="setting">
+                        <a class="setting-title">Ihre Daten</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Version:</a><a class="code">v1.0.0</a>
+                        </div>
+                        <div class="setting-content">
+                            <a class="setting-text">Ihre Sitzungs ID:</a><a class="code">1</a>
+                        </div>
+                    </div>
+                    <div class="setting">
+                        <a class="setting-title">Lokaler Speicher</a>
+                        <div class="setting-content">
+                            <a class="setting-text">Ihre heruntergeladene Menge:</a><a class="code">100,12 MB</a>
+                        </div>
+                    </div>
+                </main>
+            </section>
+        </aside>
     </div>
 
     <div class="settings" id="settingsPanel">
@@ -950,6 +1091,8 @@
     const settingsBtn = document.getElementById('settings-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const addBtn = document.getElementById('add-btn');
+    const settings = document.getElementById('settingsPanel') || document.querySelector('.settings');
+    const profile = document.getElementById('profilePanel') || document.querySelector('.profile');
 
     window.THEME_VARIABLES = {
         light: {
@@ -1092,60 +1235,74 @@
     SETTINGS
     =========== */
 
-    (function () {
-        const settingsBtn = document.getElementById('settings-btn');
-        if (!settingsBtn) return;
-
-        let settings = document.querySelector('.settings');
-        if (!settings) {
-            settings = document.createElement('div');
-            settings.className = 'settings';
-            settings.innerHTML = `
-      <aside role="dialog" aria-modal="true" aria-label="Einstellungen">
-        <div class="settings-header">
-          <h3 style="margin:0; font-size:16px;">Einstellungen</h3>
-          <button class="close-btn" aria-label="Schliessen">&times;</button>
-        </div>
-        <div class="settings-body">
-          <!-- Hier kannst du deine Einstellungen einfügen -->
-          <p>Platz für Einstellungen...</p>
-        </div>
-      </aside>
-    `;
-            document.body.appendChild(settings);
-        }
-
-        const closeBtn = settings.querySelector('.close-btn');
+    function openSettings() {
+        if (!settings) return;
+        // Schließe anderes Panel
+        if (profile && profile.classList.contains('open')) closeProfile();
+        settings.classList.add('open');
         const aside = settings.querySelector('aside');
+        if (aside) { aside.setAttribute('tabindex', '-1'); aside.focus(); }
+        document.body.style.overflow = 'hidden';
+    }
 
-        function openSettings() {
-            settings.classList.add('open');
-            aside.setAttribute('tabindex', '-1');
-            aside.focus();
-            document.body.style.overflow = 'hidden';
-        }
+    function closeSettings() {
+        if (!settings) return;
+        settings.classList.remove('open');
+        document.body.style.overflow = '';
+        if (settingsBtn) settingsBtn.focus();
+    }
 
-        function closeSettings() {
-            settings.classList.remove('open');
-            document.body.style.overflow = '';
-            settingsBtn.focus();
-        }
+    function openProfile() {
+        if (!profile) return;
+        // Schließe anderes Panel
+        if (settings && settings.classList.contains('open')) closeSettings();
+        profile.classList.add('open');
+        const aside = profile.querySelector('aside');
+        if (aside) { aside.setAttribute('tabindex', '-1'); aside.focus(); }
+        document.body.style.overflow = 'hidden';
+    }
 
+    function closeProfile() {
+        if (!profile) return;
+        profile.classList.remove('open');
+        document.body.style.overflow = '';
+        if (profileBtn) profileBtn.focus();
+    }
+
+    // Button events
+    if (settingsBtn) {
         settingsBtn.addEventListener('click', () => {
             if (settings.classList.contains('open')) closeSettings();
             else openSettings();
         });
+    }
 
+    if (profileBtn) {
+        profileBtn.addEventListener('click', () => {
+            if (profile.classList.contains('open')) closeProfile();
+            else openProfile();
+        });
+    }
+
+    // Overlay-Klick schließt nur das jeweilige Panel
+    if (settings) {
         settings.addEventListener('click', (e) => {
             if (e.target === settings) closeSettings();
         });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && settings.classList.contains('open')) {
-                closeSettings();
-            }
+    }
+    if (profile) {
+        profile.addEventListener('click', (e) => {
+            if (e.target === profile) closeProfile();
         });
-    })();
+    }
+
+    // Escape schliesst welches Panel offen ist (oder beide, falls beide offen)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (settings && settings.classList.contains('open')) closeSettings();
+            if (profile && profile.classList.contains('open')) closeProfile();
+        }
+    });
 
     /* ===========
     THEME-SELECTION
@@ -1296,9 +1453,12 @@
     SETTINGS-SIDEBAR
     =========== */
 
-    document.addEventListener('DOMContentLoaded', () => {
-        const navItems = document.querySelectorAll('.settings [data-target]');
-        const sections = document.querySelectorAll('.settings-section');
+    function initSidebar(container) {
+        if (!container) return;
+        // nav items innerhalb des Containers
+        const navItems = container.querySelectorAll('[data-target]');
+        // sections innerhalb des Containers (achte auf deine Klassen: .settings-section / .profile-section)
+        const sections = container.querySelectorAll('.settings-section, .profile-section');
 
         if (!navItems.length || !sections.length) return;
 
@@ -1317,10 +1477,85 @@
             });
         });
 
-        // Initiale Auswahl: wenn eine Section .active hat, zeige diese, sonst erste Section
-        const initial = document.querySelector('.settings-section.active') || sections[0];
+        // initial: zeige die bereits aktive section (falls .active gesetzt), ansonsten erste
+        const initial = container.querySelector('.settings-section.active, .profile-section.active') || sections[0];
         if (initial) showSection(initial.id);
+    }
+
+    // Initialisierung (wenn DOM geladen)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            initSidebar(settings);
+            initSidebar(profile);
+        });
+    } else {
+        initSidebar(settings);
+        initSidebar(profile);
+    }
+
+    /* ===========
+    SETTINGS COLUMN
+    =========== */
+
+    // z.B. public/client-chat.js oder <script> ganz am Ende vor </body>
+    document.addEventListener('DOMContentLoaded', () => {
+        function isElementEmptyOrInvisible(el) {
+            if (!el) return true;
+            // Wenn Element selbst display:none ist -> leer
+            const style = getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                return true;
+            }
+            // Prüfe auf sichtbare Kinder oder sichtbaren Text
+            // Text (ohne whitespace)
+            if (el.textContent && el.textContent.trim() !== '') return false;
+            // Kinder: irgendein Kind, das sichtbar ist -> nicht leer
+            for (const child of el.children) {
+                const cs = getComputedStyle(child);
+                if (cs.display !== 'none' && cs.visibility !== 'hidden' && child.textContent.trim() !== '') {
+                    return false;
+                }
+                // falls child ein IMG oder BUTTON etc. (auch ohne text) -> zählt als Inhalt
+                if (child.tagName.toLowerCase() === 'img' || child.tagName.toLowerCase() === 'button' || child.tagName.toLowerCase() === 'svg') {
+                    return true ? false : false; // keep flow (we'll detect below)
+                }
+            }
+            // Spezialfall: <button> oder <img> als direkter dritter child sollten nicht als "leer" gelten
+            // So: if element has an interactive/graphic child, treat as non-empty
+            if (el.querySelector('img, svg, button, input, textarea, a')) return false;
+
+            // no visible text and no meaningful children -> empty
+            return true;
+        }
+
+        function updateAllSettings() {
+            document.querySelectorAll('.setting-content').forEach(container => {
+                const third = container.children[2]; // 0-based: 0=col1, 1=col2, 2=col3
+                const thirdEmpty = isElementEmptyOrInvisible(third);
+                if (thirdEmpty) container.classList.add('no-col3');
+                else container.classList.remove('no-col3');
+            });
+        }
+
+        // initial run
+        updateAllSettings();
+
+        // optional: observe dynamic changes inside .setting (so it updates if content is injected later)
+        const observer = new MutationObserver((mutations) => {
+            // cheap: whenever mutation occurs, re-evaluate all
+            updateAllSettings();
+        });
+
+        document.querySelectorAll('.setting-content').forEach(el => {
+            observer.observe(el, { childList: true, subtree: true, characterData: true });
+        });
+
+        // Wenn du später neue .setting-content nachlädst, rufe updateAllSettings() und observer.observe(...) erneut.
     });
+
+
 </script>
+
+<script src="client-chat.js"></script>
 
 </html>
