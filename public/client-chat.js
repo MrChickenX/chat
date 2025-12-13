@@ -126,6 +126,83 @@
         // ensure keypair exists (will also attempt to upload)
         await E2EE.ensureKeypair(userId);
 
+        const sessionToken = (user && user.sessionToken) ? user.sessionToken : (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).sessionToken : null);
+
+        // create socket
+        const socket = io({ auth: { sessionToken } });
+
+        // handle incoming message for this user
+        socket.on('message', async (data) => {
+            try {
+                // data: { conversationId, message }
+                if (!data || !data.message) return;
+
+                const incoming = data.message;
+                const convId = data.conversationId;
+
+                // immer contacts neu laden (unread/preview aktualisieren)
+                // falls du das zu häufig findest, kannst du das nur ausführen, wenn conv nicht offen ist
+                // await loadContacts();
+
+                // 1) Wenn die eingehende Nachricht zur aktuell geöffneten Konversation gehört:
+                if (currentConversationId && convId === currentConversationId) {
+                    // Versuche Nachricht zu entschlüsseln
+                    const otherId = incoming.senderId === userId ? (/* sender is me */ (currentContact && currentContact.id) || '') : incoming.senderId;
+                    let text = '';
+                    if (incoming.textEncrypted) {
+                        try {
+                            text = await tryDecryptMessage(incoming, otherId);
+                        } catch (e) {
+                            console.warn('decrypt on socket message failed', e);
+                            text = '(verschlüsselt)';
+                        }
+                    }
+                    // build message object like renderMessages expects
+                    const msgObj = {
+                        senderId: incoming.senderId,
+                        text: text || '',
+                        attachments: incoming.attachments || [],
+                        ts: incoming.ts || Date.now()
+                    };
+
+                    // append to DOM (neuen Node erstellen)
+                    appendMessageToDOM(msgObj);
+
+                    // mark as read on server (optional)
+                    try { await api.markRead(currentConversationId, userId); } catch (e) { /* ignore */ }
+
+                    // update contacts preview/unread quickly
+                    loadContacts().catch(() => { });
+                    return;
+                }
+
+                // 2) Wenn andere Konversation -> update contacts (unread + preview)
+                // (do not open conversation automatically)
+                await loadContacts();
+            } catch (e) {
+                console.error('socket message handler', e);
+            }
+        });
+
+        // conv room updates
+        socket.on('conversation_update', (data) => {
+            // if needed, update UI (last message preview)
+            loadContacts().catch(() => { });
+        });
+
+        // contacts update
+        socket.on('contacts_update', (data) => {
+            loadContacts().catch(() => { });
+        });
+
+        // on connect
+        socket.on('connect', () => {
+            console.log('[socket] connected', socket.id);
+        });
+        socket.on('disconnect', (reason) => {
+            console.log('[socket] disconnected', reason);
+        });
+
         // UI refs
         const contactsContainer = document.querySelector('.contacts');
         const messagesContainer = document.querySelector('main.chat-messages') || document.querySelector('.chat-messages');
@@ -396,6 +473,10 @@
                 }
                 currentConversationId = convId;
 
+                if (socket && currentConversationId) {
+                    socket.emit('join_conv', currentConversationId);
+                }
+
                 const resp = await api.getConversation(convId);
                 if (!resp.ok) { messagesContainer.innerHTML = ''; return; }
                 const conv = resp.conversation;
@@ -603,26 +684,91 @@
             if (first) first.click();
         }
 
-        setInterval(async () => {
-            try {
-                await loadContacts();
-                if (currentConversationId && currentContact) {
-                    const convResp = await api.getConversation(currentConversationId);
-                    if (convResp.ok) {
-                        const conv = convResp.conversation;
-                        const msgs = [];
-                        for (const m of conv.messages || []) {
-                            const otherId = m.senderId === userId ? (conv.members.find(x => x !== userId) || '') : m.senderId;
-                            let text = '';
-                            if (m.textEncrypted) text = await (async () => { try { return await tryDecryptMessage(m, otherId); } catch (e) { return '(verschlüsselt)'; } })();
-                            msgs.push({ ...m, text });
-                        }
-                        renderMessages(msgs);
-                        await api.markRead(currentConversationId, userId);
-                        await loadContacts();
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        }, 10000);
+        socket.on('connect_error', (err) => {
+            console.error('[socket] connect_error:', err.message);
+
+            switch (err.message) {
+                case 'AUTH_NO_TOKEN':
+                    alert('Socket-Verbindung fehlgeschlagen: Kein Login-Token vorhanden.');
+                    break;
+                case 'AUTH_INVALID_TOKEN':
+                    alert('Socket-Verbindung fehlgeschlagen: Login abgelaufen oder ungültig.');
+                    localStorage.removeItem('user');
+                    window.location.href = '/login/login.html';
+                    break;
+                case 'AUTH_INTERNAL_ERROR':
+                    alert('Interner Serverfehler bei der Socket-Anmeldung.');
+                    break;
+                default:
+                    alert('Socket-Fehler: ' + err.message);
+            }
+        });
+
+        function appendMessageToDOM(m) {
+            if (!messagesContainer) return;
+
+            const container = el('div', 'message-container' + (m.senderId === userId ? ' my' : ''));
+            const avatarImg = el('img', 'message-avatar');
+            avatarImg.src = '/sources/avatars/avatar.png';
+
+            const box = el('div', 'message-box' + (m.senderId === userId ? ' my' : ''));
+
+            // Anhänge zuerst
+            if (m.attachments && m.attachments.length) {
+                m.attachments.forEach(att => {
+                    const mf = el('div', 'message-file');
+                    const fi = el('img', 'file-icon');
+                    fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/sources/icons/other.png';
+                    fi.alt = att.filename || 'file';
+                    fi.style.width = '28px'; fi.style.height = '28px'; fi.style.verticalAlign = 'middle';
+
+                    const fp = el('div', 'file-property');
+                    const name = el('a', 'file-name'); name.textContent = att.filename || 'file';
+                    const btn = el('button', 'file-download'); btn.textContent = 'Download';
+                    btn.addEventListener('click', () => downloadAttachment(m, att));
+
+                    fp.appendChild(name);
+                    fp.appendChild(document.createElement('br'));
+                    fp.appendChild(btn);
+
+                    mf.appendChild(fi);
+                    mf.appendChild(fp);
+                    box.appendChild(mf);
+                });
+            }
+
+            // Text unter Dateien
+            if (m.text && String(m.text).trim().length) {
+                const textNode = el('div', 'message-text');
+                textNode.textContent = m.text;
+                if (m.attachments && m.attachments.length) textNode.style.marginTop = '6px';
+                box.appendChild(textNode);
+            }
+
+            // Zeit
+            const time = el('a', 'message-time');
+            time.textContent = formatTime(m.ts);
+            time.style.display = 'block';
+            time.style.marginTop = '6px';
+            time.style.fontSize = '11px';
+            time.style.color = '#666';
+            box.appendChild(time);
+
+            // Anordnung Avatar / Box
+            if (m.senderId === userId) {
+                container.appendChild(box);
+                container.appendChild(avatarImg);
+            } else {
+                container.appendChild(avatarImg);
+                container.appendChild(box);
+            }
+
+            messagesContainer.appendChild(container);
+
+            // scroll to bottom
+            requestAnimationFrame(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        }
     });
 })();

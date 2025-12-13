@@ -3,6 +3,8 @@ const argon2 = require('argon2');
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
+const http = require('http');
+const { Server: IOServer } = require('socket.io');
 
 const app = express();
 const USERS_FILE = path.join(__dirname, 'users.json');
@@ -112,6 +114,8 @@ app.post('/register', async (req, res) => {
         const id = crypto.randomUUID();
         const passHash = await argon2.hash(password);
 
+        const sessionToken = crypto.randomUUID();
+
         const userObj = {
             id,
             username,
@@ -120,14 +124,15 @@ app.post('/register', async (req, res) => {
             created: now(),
             publicKey: publicKey || '',
             verified: 'no',
-            contacts: []
+            contacts: [],
+            sessionToken
         };
 
         db.users[id] = userObj;
         await saveUsersFile(db);
 
         console.log(`[register] user created: ${username} (${id})  publicKey? ${!!publicKey}`);
-        return res.json({ ok: true, id, username, nickname: userObj.nickname });
+        return res.json({ ok: true, id, username, nickname: userObj.nickname, sessionToken });
     } catch (err) {
         console.error('[register] error', err);
         return res.status(500).json({ error: 'Server error' });
@@ -150,6 +155,9 @@ app.post('/login', async (req, res) => {
         const ok = await argon2.verify(user.passHash, password).catch(() => false);
         if (!ok) return res.status(401).json({ error: 'Ungültige Anmeldeinformationen' });
 
+        if (!user.sessionToken) user.sessionToken = crypto.randomUUID();
+        await saveUsersFile(db);
+
         if (publicKey) {
             user.publicKey = publicKey;
             await saveUsersFile(db);
@@ -163,7 +171,8 @@ app.post('/login', async (req, res) => {
             id: user.id,
             username: user.username,
             nickname: user.nickname || user.username,
-            publicKey: user.publicKey || ''
+            publicKey: user.publicKey || '',
+            sessionToken: user.sessionToken
         });
     } catch (err) {
         console.error('[login] error', err);
@@ -366,6 +375,13 @@ app.post('/message', async (req, res) => {
         conv.messages.push(message);
         await saveMessagesFile(msgs);
 
+        // emit to all members (notify each user's personal room)
+        // notify by conversation also (clients can join conv rooms)
+        for (const mid of conv.members || []) {
+            io.to(`user:${mid}`).emit('message', { conversationId: conv.id, message });
+        }
+        io.to(`conv:${conv.id}`).emit('conversation_update', { conversationId: conv.id, lastMessage: message });
+
         // auto-add contacts to users file (convenience)
         try {
             const usersDb = await loadUsersFile();
@@ -454,10 +470,19 @@ app.get('/contacts', async (req, res) => {
 async function cleanupOldMessages() {
     const filePath = 'messages.json';
     try {
-        await fs.unlink(filePath); // Warten Sie, bis der Vorgang abgeschlossen ist
-        console.log(`Datei ${filePath} erfolgreich gelöscht.`);
+        const emptyStructure = {
+            conversations: {}
+        };
+
+        await fs.writeFile(
+            filePath,
+            JSON.stringify(emptyStructure, null, 2),
+            'utf8'
+        );
+
+        console.log(`Inhalt von ${filePath} wurde korrekt geleert.`);
     } catch (err) {
-        console.error('Fehler beim Löschen:', err.message); // Fehlerbehandlung
+        console.error('Fehler beim Leeren der Datei:', err.message);
     }
 }
 
@@ -470,8 +495,82 @@ app.get('/_debug/users', async (req, res) => {
 });
 
 const PORT = 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+const server = http.createServer(app);
+const io = new IOServer(server, {
+    // optional: cors falls nötig
+    // cors: { origin: '*' }
+});
+
+io.use(async (socket, next) => {
+    try {
+        const sessionToken = socket.handshake.auth?.sessionToken;
+
+        if (!sessionToken) {
+            return next(new Error('AUTH_NO_TOKEN'));
+        }
+
+        const usersDb = await loadUsersFile();
+        const user = Object.values(usersDb.users || {}).find(
+            u => u.sessionToken === sessionToken
+        );
+
+        if (!user) {
+            return next(new Error('AUTH_INVALID_TOKEN'));
+        }
+
+        // User am Socket speichern (für später)
+        socket.data.userId = user.id;
+        socket.data.username = user.username;
+
+        next(); // ✅ Auth OK
+    } catch (err) {
+        console.error('[socket auth] error', err);
+        next(new Error('AUTH_INTERNAL_ERROR'));
+    }
+});
+
+// socket auth & rooms
+io.on('connection', (socket) => {
+    try {
+        // socket.data.userId wird von io.use (Auth-Middleware) gesetzt
+        const userId = socket.data && socket.data.userId;
+        const username = socket.data && socket.data.username;
+
+        if (!userId) {
+            console.warn('[socket] connected socket without userId, disconnecting', socket.id);
+            socket.disconnect(true);
+            return;
+        }
+
+        const userRoom = `user:${userId}`;
+        socket.join(userRoom);
+
+        console.log(`[socket] user connected ${userId} (socket=${socket.id}, username=${username || 'n/a'})`);
+
+        // optional: client kann conv-rooms joinen, damit server gezielt an conv:ID senden kann
+        socket.on('join_conv', (convId) => {
+            if (!convId) return;
+            socket.join(`conv:${convId}`);
+            console.log(`[socket] ${userId} joined conv:${convId}`);
+        });
+
+        socket.on('leave_conv', (convId) => {
+            if (!convId) return;
+            socket.leave(`conv:${convId}`);
+            console.log(`[socket] ${userId} left conv:${convId}`);
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log(`[socket] ${userId} disconnected:`, reason);
+        });
+    } catch (e) {
+        console.error('[socket] connection handler error', e);
+        try { socket.disconnect(true); } catch (_) { /* ignore */ }
+    }
+});
+
 cleanupOldMessages();
+server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 setInterval(() => {
     cleanupOldMessages();
 }, 60 * 60 * 24 * 7 * 1000); // jede Woche

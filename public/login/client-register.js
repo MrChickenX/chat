@@ -67,6 +67,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 await ensureKeyAndUpload(data.id);
                 const user = { id: data.id, username: data.username };
                 localStorage.setItem('user', JSON.stringify(user));
+
+                if (resp.ok && data.ok) {
+                    // speichere minimalen User im localStorage inklusive sessionToken
+                    const user = { id: data.id, username: data.username, sessionToken: data.sessionToken };
+                    localStorage.setItem('user', JSON.stringify(user));
+
+                    // ensure keypair & upload (optional): call ensureKeyAndUpload(user.id) if you want synchronously
+                    // Weiterleitung zum Chat
+                    window.location.href = '/chat.html';
+                }
+
                 window.location.href = '/index.html';
             } else {
                 alert('Fehler: ' + (data.error || 'unbekannt'));
