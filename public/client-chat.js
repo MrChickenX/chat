@@ -11,6 +11,32 @@
         addContact: (id, contactUsername) => fetch(`/user/${encodeURIComponent(id)}/contacts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contactUsername }) }).then(r => r.json())
     };
 
+    const API_BASE = window.__API_BASE__ || '';
+    const socketUrl = API_BASE || undefined; // wenn '' -> relative (same origin)
+    const socket = io(socketUrl, { path: '/socket.io', auth: { sessionToken }, transports: ['websocket', 'polling'] });
+
+    function apiFetch(path, opts = {}) {
+        const url = API_BASE ? `${API_BASE}${path}` : path;
+        return fetch(url, {
+            ...opts,
+            credentials: 'include', // wenn du Cookies nutzt; ansonsten entferne
+            headers: {
+                'Content-Type': 'application/json',
+                ...(opts.headers || {})
+            }
+        }).then(async res => {
+            if (!res.ok) {
+                const text = await res.text();
+                console.error('apiFetch error', res.status, text.slice(0, 200));
+                throw new Error(`HTTP ${res.status}`);
+            }
+            // safe parse
+            const ct = res.headers.get('content-type') || '';
+            if (ct.includes('application/json')) return res.json();
+            return res.text();
+        });
+    }
+
     function arrayBufferToBase64(buffer) {
         const bytes = new Uint8Array(buffer);
         const chunkSize = 0x8000;
@@ -326,7 +352,8 @@
 
         async function loadContacts() {
             try {
-                const resp = await api.getContacts(userId);
+                const resp = await apiFetch(`/contacts?userId=${encodeURIComponent(userId)}`)
+                    .then(x => typeof x === 'string' ? JSON.parse(x) : x);
                 if (!resp.ok) return;
                 const arr = resp.contacts || [];
                 const enriched = [];
