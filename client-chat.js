@@ -12,7 +12,7 @@
     };
 
     const API_BASE = window.__API_BASE__ || '';
-    const socketUrl = API_BASE || undefined; // wenn '' -> relative (same origin)
+    const socketUrl = "https://140.238.211.237:3000";
     const socket = io(socketUrl, { path: '/socket.io', auth: { sessionToken }, transports: ['websocket', 'polling'] });
 
     function apiFetch(path, opts = {}) {
