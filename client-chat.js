@@ -13,7 +13,19 @@
 
     const API_BASE = window.__API_BASE__ || '';
     const socketUrl = "https://140.238.211.237:3000";
-    const socket = io(socketUrl, { path: '/socket.io', auth: { sessionToken }, transports: ['websocket', 'polling'] });
+    const rawUser = localStorage.getItem('user');
+    const user = rawUser ? JSON.parse(rawUser) : null;
+    const sessionToken = (user && user.sessionToken) ? user.sessionToken : null;
+
+    const socket = io(socketUrl, {
+        path: '/socket.io',
+        auth: { sessionToken },
+        transports: ['websocket', 'polling']
+    });
+
+    if (!sessionToken) {
+        console.warn('Kein sessionToken vorhanden, Socket.IO Auth wird null sein');
+    }
 
     function apiFetch(path, opts = {}) {
         const url = API_BASE ? `${API_BASE}${path}` : path;
