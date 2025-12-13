@@ -59,8 +59,9 @@
 
         .content>aside:nth-child(2) {
             background: var(--theme-img-color);
+            overflow: hidden;
+            touch-action: none;
         }
-
 
         main {
             display: flex;
@@ -698,6 +699,38 @@
             max-width: 264px;
             border-radius: 12px;
         }
+
+        /* ===========
+        WELCOME BOX
+        =========== */
+
+        .welcome {
+            margin: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .welcome h1 {
+            border-bottom: 2px solid var(--accent);
+            padding: 4px;
+        }
+
+        .welcome h1 {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .welcome svg {
+            fill: var(--accent);
+            width: 128px;
+            height: 128px;
+            margin-top: 12px;
+        }
+
+        .welcome ol li::marker {
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -739,96 +772,32 @@
                 </svg><input type="text" placeholder="Suche nach Chats...">
             </div>
             <div class="contacts">
-                <div class="contact" id="contact-id">
-                    <img class="avatar" src="sources/avatars/avatar.png">
-                    <div>
-                        <a class="contact-name" id="contact-name">Klassenlehrer<svg xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 -960 960 960" fill="#000000">
-                                <path
-                                    d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm94-278 226-226-56-58-170 170-86-84-56 56 142 142Z" />
-                            </svg></a><a class="last-msg-data new">15:20</a>
-                        <a class="contact-activity" id="contact-activity">Du hast deine Hausaufgaben nicht gemacht.
-                            Könnstest du sie bis heuete Abend mir schicken.</a><a class="new-msg-count new"
-                            id="new-msg-count">2</a>
-                    </div>
-                </div>
-                <div class="contact" id="contact-id">
-                    <img class="avatar" src="sources/avatars/avatar.png">
-                    <div>
-                        <a class="contact-name" id="contact-name">Klassenchat</a><a
-                            class="last-msg-data new">gestern</a>
-                        <a class="contact-activity new" id="contact-activity">Alex: Wo befinden sich die Lernziele für
-                            die RZG Prüfung?</a><a class="new-msg-count new" id="new-msg-count">1</a>
-                    </div>
-                </div>
-                <div class="contact" id="contact-id">
-                    <img class="avatar" src="sources/avatars/avatar.png">
-                    <div>
-                        <a class="contact-name" id="contact-name">Mitschüler</a><a class="last-msg-data">03.12.2025</a>
-                        <a class="contact-activity" id="contact-activity">Wann ist die nächste Prüfung? Der Lehrer hat
-                            doch heute etwas gesagt.</a><a class="new-msg-count" id="new-msg-count"></a>
-                    </div>
-                </div>
+                <!-- CONTACT CARDS HERE -->
             </div>
             <div class="theme-img-box">
-                <img src="sources/themes/images/autumn.png" class="theme-img">
+                <img class="theme-img">
             </div>
         </aside>
         <main>
             <header>
                 <img class="avatar" src="sources/avatars/avatar.png">
                 <div class="current-contact">
-                    <a class="current-contact-name">Alex</a>
-                    <a class="current-contact-status">Online</a>
+                    <a class="current-contact-name"></a>
+                    <a class="current-contact-status"></a>
                 </div>
             </header>
             <main class="chat-messages">
-                <div class="message-date">07.12.2025</div>
-                <div class="message-container">
-                    <img src="sources/avatars/avatar.png" class="message-avatar">
-                    <div class="message-box">
-                        <a>Nachricht eins.</a><a class="message-time">18:20</a>
-                    </div>
-                </div>
-                <div class="message-container my">
-                    <div class="message-box my">
-                        <a>Nachricht zwei.</a><a class="message-time">18:22</a>
-                    </div>
-                    <img src="sources/avatars/avatar.png" class="message-avatar">
-                </div>
-                <div class="message-container">
-                    <img src="sources/avatars/avatar.png" class="message-avatar">
-                    <div class="message-box">
-                        <div class="message-file">
-                            <img src="sources/icons/excel.png" class="file-icon">
-                            <div class="file-property">
-                                <a class="file-name">mappe-1.xls</a><a class="file-size">12 MB</a>
-                                <br>
-                                <button class="file-download">Download</button>
-                            </div>
-                        </div><a class="message-time">18:43</a>
-                    </div>
-                </div>
-                <div class="message-container my">
-                    <div class="message-box my">
-                        <div class="message-file">
-                            <img src="sources/icons/word.png" class="file-icon">
-                            <div class="file-property">
-                                <a class="file-name">dokument-1.docs</a><a class="file-size">2,5 MB</a>
-                                <br>
-                                <button class="file-download">Download</button>
-                            </div>
-                        </div><a class="message-time">19:12</a>
-                    </div>
-                    <img src="sources/avatars/avatar.png" class="message-avatar">
-                </div>
-                <div class="message-date">09.12.2025</div>
-                <div class="message-container my">
-                    <div class="message-box my">
-                        <img src="sources/themes/images/autumn.png" class="message-img"><a
-                            class="message-time">07:33</a>
-                    </div>
-                    <img src="sources/avatars/avatar.png" class="message-avatar">
+                <div class="welcome">
+                    <h1>Du hast keinen Kontakt ausgewählt</h1>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="#000000">
+                        <path
+                            d="m376-400 104-104 104 104 56-56-104-104 104-104-56-56-104 104-104-104-56 56 104 104-104 104 56 56ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Zm126-240h594v-480H160v525l46-45Zm-46 0v-480 480Z" />
+                    </svg>
+                    <ol>
+                        <li>Wähle einen Kontakt aus der linken Seitenleiste aus, um eine Unterhaltung zu starten.</li>
+                        <li>Du kannst auch auf das "+"-Symbol klicken, um einen neuen Kontakt hinzuzufügen.</li>
+                        <li>Du kannst eine Verifizierung anfordern, um mehr Fatures zu erhalten!</li>
+                    </ol>
                 </div>
             </main>
             <footer>
@@ -932,15 +901,6 @@
                         <a class="setting-title">Ihre Daten</a>
                         <div class="setting-content">
                             <a class="setting-text">Version:</a><a class="code">v1.0.0</a>
-                        </div>
-                        <div class="setting-content">
-                            <a class="setting-text">Ihre Sitzungs ID:</a><a class="code">1</a>
-                        </div>
-                    </div>
-                    <div class="setting">
-                        <a class="setting-title">Lokaler Speicher</a>
-                        <div class="setting-content">
-                            <a class="setting-text">Ihre heruntergeladene Menge:</a><a class="code">100,12 MB</a>
                         </div>
                     </div>
                 </main>

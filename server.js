@@ -20,55 +20,44 @@ async function saveJSON(filePath, obj) {
     const data = JSON.stringify(obj, null, 2);
     const tmp = `${filePath}.tmp.${Date.now()}`;
 
-    // operation that actually writes the file (attempt rename, fallback to direct write)
     const doWrite = async () => {
-        // 1) write tmp file
-        await fs.writeFile(tmp, data);
-        // 2) try atomic rename
+        await fs.writeFile(tmp, data, 'utf8');
         try {
             await fs.rename(tmp, filePath);
             return;
         } catch (err) {
             console.warn(`[saveJSON] rename failed for ${tmp} -> ${filePath}:`, err && err.code ? err.code : err);
-            // fallback: try direct overwrite of destination (less atomic but works on Windows if rename blocked)
             try {
-                await fs.writeFile(filePath, data);
-                // remove tmp file if still present
+                await fs.writeFile(filePath, data, 'utf8');
                 await fs.unlink(tmp).catch(() => { /* ignore */ });
                 return;
             } catch (err2) {
-                // final failure: try to cleanup tmp and rethrow
-                try { await fs.unlink(tmp).catch(() => { }); } catch (e) {/*ignore*/ }
+                try { await fs.unlink(tmp).catch(() => { }); } catch (_) { }
                 console.error('[saveJSON] fallback write failed:', err2);
                 throw err2;
             }
         }
     };
 
-    // serialize per-file writes to avoid racing renames/writes
     const last = writeQueues[filePath] || Promise.resolve();
     const next = last.then(() => doWrite(), () => doWrite());
-    // store the promise so next calls wait
     writeQueues[filePath] = next.finally(() => {
-        // clear queue entry if it's settled to avoid memory growth
         if (writeQueues[filePath] === next) delete writeQueues[filePath];
     });
     return next;
 }
 
-// robust loader: on parse error rename corrupt file and return default
 async function loadJSON(filePath, defaultObj) {
     try {
         const raw = await fs.readFile(filePath, 'utf8');
         return JSON.parse(raw);
     } catch (err) {
         if (err && err.code === 'ENOENT') {
-            await fs.writeFile(filePath, JSON.stringify(defaultObj, null, 2));
+            await fs.writeFile(filePath, JSON.stringify(defaultObj, null, 2), 'utf8');
             return defaultObj;
         }
         if (err instanceof SyntaxError) {
             console.error(`[loadJSON] JSON parse error for ${filePath}:`, err.message);
-            // move bad file aside
             try {
                 const bak = `${filePath}.corrupt.${Date.now()}`;
                 await fs.rename(filePath, bak);
@@ -76,14 +65,13 @@ async function loadJSON(filePath, defaultObj) {
             } catch (e) {
                 console.error('[loadJSON] failed to move corrupt file', e);
             }
-            await fs.writeFile(filePath, JSON.stringify(defaultObj, null, 2));
+            await fs.writeFile(filePath, JSON.stringify(defaultObj, null, 2), 'utf8');
             return defaultObj;
         }
         throw err;
     }
 }
 
-// convenience wrappers
 async function loadUsersFile() { return loadJSON(USERS_FILE, { users: {} }); }
 async function loadMessagesFile() { return loadJSON(MESSAGES_FILE, { conversations: {} }); }
 async function saveUsersFile(obj) { return saveJSON(USERS_FILE, obj); }
@@ -101,7 +89,7 @@ function findUserByUsername(usersObj, username) {
 }
 
 /* -----------------------
-   REGISTER
+   REGISTER / LOGIN / PUBLICKEY / CONTACTS
    ----------------------- */
 app.post('/register', async (req, res) => {
     try {
@@ -113,7 +101,6 @@ app.post('/register', async (req, res) => {
 
         const id = crypto.randomUUID();
         const passHash = await argon2.hash(password);
-
         const sessionToken = crypto.randomUUID();
 
         const userObj = {
@@ -139,9 +126,6 @@ app.post('/register', async (req, res) => {
     }
 });
 
-/* -----------------------
-   LOGIN (jetzt optional publicKey speichern)
-   ----------------------- */
 app.post('/login', async (req, res) => {
     try {
         const { username, password, publicKey } = req.body || {};
@@ -156,15 +140,10 @@ app.post('/login', async (req, res) => {
         if (!ok) return res.status(401).json({ error: 'Ungültige Anmeldeinformationen' });
 
         if (!user.sessionToken) user.sessionToken = crypto.randomUUID();
-        await saveUsersFile(db);
-
         if (publicKey) {
             user.publicKey = publicKey;
-            await saveUsersFile(db);
-            console.log(`[login] gespeicherter publicKey für ${user.username} (${user.id})`);
-        } else {
-            console.log(`[login] no publicKey provided for ${user.username} (${user.id}). current? ${!!user.publicKey}`);
         }
+        await saveUsersFile(db);
 
         return res.json({
             ok: true,
@@ -180,9 +159,6 @@ app.post('/login', async (req, res) => {
     }
 });
 
-/* -----------------------
-   Set public key (falls client es separat senden will)
-   ----------------------- */
 app.post('/user/:id/publicKey', async (req, res) => {
     try {
         const id = req.params.id;
@@ -203,9 +179,6 @@ app.post('/user/:id/publicKey', async (req, res) => {
     }
 });
 
-/* -----------------------
-   Small debug: read public key quickly
-   ----------------------- */
 app.get('/publicKey/:id', async (req, res) => {
     try {
         const db = await loadUsersFile();
@@ -218,9 +191,6 @@ app.get('/publicKey/:id', async (req, res) => {
     }
 });
 
-/* -----------------------
-   Kontakte hinzufügen (by username)
-   ----------------------- */
 app.post('/user/:id/contacts', async (req, res) => {
     try {
         const id = req.params.id;
@@ -238,7 +208,6 @@ app.post('/user/:id/contacts', async (req, res) => {
         me.contacts = me.contacts || [];
         if (!me.contacts.includes(contactId)) me.contacts.push(contactId);
 
-        // add reverse contact for convenience
         const other = db.users[contactId];
         other.contacts = other.contacts || [];
         if (!other.contacts.includes(id)) other.contacts.push(id);
@@ -252,9 +221,6 @@ app.post('/user/:id/contacts', async (req, res) => {
     }
 });
 
-/* -----------------------
-   GET user safe info
-   ----------------------- */
 app.get('/user/:id', async (req, res) => {
     try {
         const db = await loadUsersFile();
@@ -277,7 +243,7 @@ app.get('/user/:id', async (req, res) => {
 });
 
 /* -----------------------
-   Conversations & messages
+   Conversations & messages (HTTP)
    ----------------------- */
 app.get('/conversations', async (req, res) => {
     try {
@@ -342,7 +308,7 @@ app.post('/conversation', async (req, res) => {
     }
 });
 
-// message (speichert auch iv & attachments)
+// message (HTTP) - bleibt kompatibel
 app.post('/message', async (req, res) => {
     try {
         const { conversationId, from, textEncrypted, iv, to, attachments } = req.body || {};
@@ -375,14 +341,13 @@ app.post('/message', async (req, res) => {
         conv.messages.push(message);
         await saveMessagesFile(msgs);
 
-        // emit to all members (notify each user's personal room)
-        // notify by conversation also (clients can join conv rooms)
+        // emit to all members by user room and conv room
         for (const mid of conv.members || []) {
             io.to(`user:${mid}`).emit('message', { conversationId: conv.id, message });
         }
         io.to(`conv:${conv.id}`).emit('conversation_update', { conversationId: conv.id, lastMessage: message });
 
-        // auto-add contacts to users file (convenience)
+        // auto-add contacts convenience (best effort)
         try {
             const usersDb = await loadUsersFile();
             conv.members.forEach(mid => {
@@ -467,22 +432,17 @@ app.get('/contacts', async (req, res) => {
     }
 });
 
+// cleanup uses constant MESSAGES_FILE
 async function cleanupOldMessages() {
-    const filePath = 'messages.json';
+    const filePath = MESSAGES_FILE;
     try {
         const emptyStructure = {
             conversations: {}
         };
-
-        await fs.writeFile(
-            filePath,
-            JSON.stringify(emptyStructure, null, 2),
-            'utf8'
-        );
-
+        await fs.writeFile(filePath, JSON.stringify(emptyStructure, null, 2), 'utf8');
         console.log(`Inhalt von ${filePath} wurde korrekt geleert.`);
     } catch (err) {
-        console.error('Fehler beim Leeren der Datei:', err.message);
+        console.error('Fehler beim Leeren der Datei:', err && err.message ? err.message : err);
     }
 }
 
@@ -497,57 +457,39 @@ app.get('/_debug/users', async (req, res) => {
 const PORT = 3000;
 const server = http.createServer(app);
 const io = new IOServer(server, {
-    // optional: cors falls nötig
-    // cors: { origin: '*' }
+    cors: { origin: ["http://localhost:3000", "https://sharyn-investigational-philologically.ngrok-free.dev"], methods: ["GET", "POST"], credentials: true }
 });
 
+// socket auth middleware
 io.use(async (socket, next) => {
     try {
         const sessionToken = socket.handshake.auth?.sessionToken;
-
-        if (!sessionToken) {
-            return next(new Error('AUTH_NO_TOKEN'));
-        }
+        if (!sessionToken) return next(new Error('AUTH_NO_TOKEN'));
 
         const usersDb = await loadUsersFile();
-        const user = Object.values(usersDb.users || {}).find(
-            u => u.sessionToken === sessionToken
-        );
+        const user = Object.values(usersDb.users || {}).find(u => u.sessionToken === sessionToken);
+        if (!user) return next(new Error('AUTH_INVALID_TOKEN'));
 
-        if (!user) {
-            return next(new Error('AUTH_INVALID_TOKEN'));
-        }
-
-        // User am Socket speichern (für später)
         socket.data.userId = user.id;
         socket.data.username = user.username;
-
-        next(); // ✅ Auth OK
+        next();
     } catch (err) {
         console.error('[socket auth] error', err);
         next(new Error('AUTH_INTERNAL_ERROR'));
     }
 });
 
-// socket auth & rooms
 io.on('connection', (socket) => {
     try {
-        // socket.data.userId wird von io.use (Auth-Middleware) gesetzt
         const userId = socket.data && socket.data.userId;
         const username = socket.data && socket.data.username;
-
-        if (!userId) {
-            console.warn('[socket] connected socket without userId, disconnecting', socket.id);
-            socket.disconnect(true);
-            return;
-        }
+        if (!userId) { socket.disconnect(true); return; }
 
         const userRoom = `user:${userId}`;
         socket.join(userRoom);
 
         console.log(`[socket] user connected ${userId} (socket=${socket.id}, username=${username || 'n/a'})`);
 
-        // optional: client kann conv-rooms joinen, damit server gezielt an conv:ID senden kann
         socket.on('join_conv', (convId) => {
             if (!convId) return;
             socket.join(`conv:${convId}`);
@@ -560,6 +502,88 @@ io.on('connection', (socket) => {
             console.log(`[socket] ${userId} left conv:${convId}`);
         });
 
+        // ----------------------
+        // server.js - send_message handler (ersetze vorhandenen Handler)
+        // ----------------------
+        socket.on('send_message', async (payload, ack) => {
+            try {
+                // payload: { clientId?, conversationId?, from, to?, textEncrypted, iv, attachments? }
+                if (!payload || !payload.from) {
+                    if (typeof ack === 'function') ack({ error: 'invalid payload' });
+                    return;
+                }
+
+                const from = String(payload.from);
+                const to = payload.to ? String(payload.to) : null;
+                const clientId = payload.clientId || null;
+
+                const msgs = await loadMessagesFile();
+
+                let conv = payload.conversationId ? msgs.conversations[payload.conversationId] : null;
+                if (!conv) {
+                    if (!to) {
+                        if (typeof ack === 'function') ack({ error: 'conversationId or to required' });
+                        return;
+                    }
+                    const members = [from, to];
+                    const memberKey = members.slice().sort().join(',');
+                    conv = Object.values(msgs.conversations).find(c => c._memberKey === memberKey);
+                    if (!conv) {
+                        const id = crypto.randomUUID();
+                        conv = { id, members, messages: [], created: now(), _memberKey: memberKey };
+                        msgs.conversations[id] = conv;
+                    }
+                }
+
+                const message = {
+                    id: crypto.randomUUID(),
+                    clientId: clientId,                 // <-- wichtig: echo the client temp id
+                    senderId: from,
+                    textEncrypted: payload.textEncrypted || '',
+                    iv: payload.iv || '',
+                    attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+                    ts: now(),
+                    readBy: [from]
+                };
+
+                conv.messages.push(message);
+
+                // persist (best effort; await so disk state is consistent)
+                try {
+                    await saveMessagesFile(msgs);
+                } catch (e) {
+                    console.error('[send_message] saveMessagesFile failed', e);
+                }
+
+                // emit to members (user rooms) and conv room
+                for (const mid of conv.members || []) {
+                    io.to(`user:${mid}`).emit('message', { conversationId: conv.id, message });
+                }
+                io.to(`conv:${conv.id}`).emit('conversation_update', { conversationId: conv.id, lastMessage: message });
+
+                // try to add to users contacts (best effort)
+                try {
+                    const usersDb = await loadUsersFile();
+                    conv.members.forEach(mid => {
+                        usersDb.users[mid] = usersDb.users[mid] || { id: mid, username: mid, contacts: [] };
+                    });
+                    conv.members.forEach(mid => {
+                        const others = conv.members.filter(x => x !== mid);
+                        others.forEach(o => {
+                            if (!usersDb.users[mid].contacts) usersDb.users[mid].contacts = [];
+                            if (!usersDb.users[mid].contacts.includes(o)) usersDb.users[mid].contacts.push(o);
+                        });
+                    });
+                    await saveUsersFile(usersDb);
+                } catch (e) { /* ignore */ }
+
+                if (typeof ack === 'function') ack({ ok: true, conversationId: conv.id, message });
+            } catch (err) {
+                console.error('[socket send_message] error', err);
+                if (typeof ack === 'function') ack({ error: 'server error' });
+            }
+        });
+
         socket.on('disconnect', (reason) => {
             console.log(`[socket] ${userId} disconnected:`, reason);
         });
@@ -569,8 +593,6 @@ io.on('connection', (socket) => {
     }
 });
 
-cleanupOldMessages();
+cleanupOldMessages(); // initial (if you want, remove this in production)
 server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-setInterval(() => {
-    cleanupOldMessages();
-}, 60 * 60 * 24 * 7 * 1000); // jede Woche
+setInterval(() => { cleanupOldMessages(); }, 60 * 60 * 24 * 7 * 1000); // jede Woche
