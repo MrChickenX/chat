@@ -147,7 +147,7 @@
         const raw = localStorage.getItem('user');
         const user = raw ? JSON.parse(raw) : null;
         if (!user || !user.id) {
-            window.location.href = '/login/login.html';
+            window.location.href = '/chat/login/login.html';
             return;
         }
         const userId = user.id;
@@ -217,7 +217,7 @@
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 localStorage.removeItem('user');
-                window.location.href = '/login/login.html';
+                window.location.href = '/chat/login/login.html';
             });
         });
 
@@ -816,7 +816,7 @@
                 case 'AUTH_INVALID_TOKEN':
                     alert('Socket-Verbindung fehlgeschlagen: Login abgelaufen oder ungültig.');
                     localStorage.removeItem('user');
-                    window.location.href = '/login/login.html';
+                    window.location.href = '/chat/login/login.html';
                     break;
                 case 'AUTH_INTERNAL_ERROR':
                     alert('Interner Serverfehler bei der Socket-Anmeldung.');
