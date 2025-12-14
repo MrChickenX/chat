@@ -187,6 +187,24 @@
         const userId = user.id;
         await E2EE.ensureKeypair(userId);
 
+        // === Auto-upload publicKey (sofort nach ensureKeypair) ===
+        try {
+            const pubB64 = localStorage.getItem('ecdh_pub_' + userId);
+            if (pubB64) {
+                if (socket && socket.connected) {
+                    socket.emit('upload_public_key', { publicKey: pubB64 }, (ack) => {
+                        if (!ack || ack.error) {
+                            api.setPublicKey(userId, pubB64).catch(e => console.warn('setPublicKey fallback failed', e));
+                        }
+                    });
+                } else {
+                    api.setPublicKey(userId, pubB64).catch(e => console.warn('setPublicKey failed', e));
+                }
+            }
+        } catch (e) {
+            console.warn('auto upload publicKey error', e);
+        }
+
         const sessionToken = (user && user.sessionToken) ? user.sessionToken : (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).sessionToken : null);
 
         try { await loadSocketIoClient(); } catch (e) { console.warn('Could not load socket.io client from CDN', e); }
@@ -299,7 +317,19 @@
             const wrapper = el('div');
 
             const nameAnchor = el('a', 'contact-name');
-            nameAnchor.textContent = c.nickname || c.username || c.id;
+            // name text node
+            const nameText = document.createElement('span');
+            nameText.textContent = c.nickname || c.username || c.id;
+            nameAnchor.appendChild(nameText);
+
+            // verified svg (only if verified)
+            if (c.verified && String(c.verified).toLowerCase() === 'yes') {
+                const svgWrap = document.createElement('span');
+                svgWrap.className = 'verified-icon';
+                svgWrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="18" height="18" style="margin-left:6px;vertical-align:middle;"><path d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm94-278 226-226-56-58-170 170-86-84-56 56 142 142Z"/></svg>`;
+                nameAnchor.appendChild(svgWrap);
+            }
+
             wrapper.appendChild(nameAnchor);
 
             const timeAnchor = el('a', 'last-msg-data');
@@ -339,33 +369,15 @@
         async function tryDecryptMessage(msg, otherId) {
             if (!msg || !msg.textEncrypted) return '';
             try {
-                const entry = cryptoCache.get(otherId);
-                let aesKey = entry && entry.aesKey ? entry.aesKey : null;
-
-                if (!aesKey) {
-                    aesKey = await getOrCreateAesKeyForPeer(otherId);
-                    if (!aesKey) return '(verschlüsselt)';
-                    // cache result
-                    cryptoCache.set(otherId, { theirPubB64: entry ? entry.theirPubB64 : null, aesKey });
-                }
-
-                const cipherB64 = msg.textEncrypted;
-                const ivB64 = msg.iv || msg.ivB64;
-                if (!cipherB64 || !ivB64) return '(verschlüsselt)';
-
-                // quick sanity checks
-                const cipherLen = (function (lenB64) { try { return atob(lenB64).length; } catch (e) { return 0; } })(cipherB64);
-                if (cipherLen < 16) {
-                    console.warn('Cipher zu kurz, skip decrypt', { otherId, cipherLen });
-                    return '(verschlüsselt)';
-                }
-
-                const dec = await E2EE.decryptWithKey(aesKey, cipherB64, ivB64);
-                if (!dec) return '(verschlüsselt)';
-                return dec;
+                const aesKey = await getOrCreateAesKeyForPeer(otherId);
+                if (!aesKey) return '(verschlüsselt)';
+                const cipher = msg.textEncrypted || msg.cipher || msg.cipherB64;
+                const iv = msg.iv || msg.ivB64;
+                if (!cipher || !iv) return '(verschlüsselt)';
+                const dec = await E2EE.decryptWithKey(aesKey, cipher, iv);
+                return dec || '(verschlüsselt)';
             } catch (e) {
-                // OperationError: usually wrong key/IV/tag
-                console.warn('tryDecryptMessage failed (likely wrong key/iv):', e && e.message ? e.message : e);
+                console.warn('tryDecryptMessage failed', e);
                 return '(verschlüsselt)';
             }
         }
@@ -455,18 +467,23 @@
                 if (cryptoCache.has(peerId)) {
                     const entry = cryptoCache.get(peerId);
                     if (entry.aesKey) return entry.aesKey;
-                    // if entry exists but no aesKey, fallthrough to attempt to create
+                    // entry exists but no aesKey -> try refresh publicKey
                 }
+
+                // fetch user once
                 const userResp = await api.getUser(peerId);
                 if (!userResp || !userResp.ok || !userResp.body || !userResp.body.user || !userResp.body.user.publicKey) {
                     return null;
                 }
                 const theirPubB64 = userResp.body.user.publicKey;
+
                 const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
                 if (!myJwk) throw new Error('No local private key');
+
                 const myPrivKey = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
                 const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
-                const aesKey = await E2EE.deriveAESKey(myPrivKey, theirPubKey);
+                const aesKey = await getOrCreateAesKeyForPeer(contact.id);
+
                 const entry = { theirPubB64, aesKey };
                 cryptoCache.set(peerId, entry);
                 return aesKey;
@@ -516,13 +533,11 @@
 
                 const msgs = [];
                 for (const m of conv.messages || []) {
-                    const otherId = m.senderId === userId ? (conv.members.find(x => x !== userId) || '') : m.senderId;
-                    let text = '';
-                    if (m.unencrypted) {
-                        text = m.textEncrypted || '';
-                    } else if (m.textEncrypted) {
+                    if (m.unencrypted) { text = m.textEncrypted || ''; }
+                    else if (m.textEncrypted) {
                         if (aesKey) {
-                            const dec = await E2EE.decryptWithKey(aesKey, m.textEncrypted, m.iv || m.ivB64);
+                            const iv = m.iv || m.ivB64;
+                            const dec = await E2EE.decryptWithKey(aesKey, m.textEncrypted, iv);
                             text = dec || '(konnte nicht entschlüsselt werden)';
                         } else {
                             text = '(verschlüsselt)';
@@ -833,7 +848,10 @@
                     const incoming = data.message;
                     const convId = data.conversationId;
 
+                    // Belongs to current conversation?
                     if (currentConversationId && convId === currentConversationId) {
+
+                        // Unencrypted messages (server-flag)
                         if (incoming.unencrypted) {
                             const clientId = incoming.clientId || incoming.clientid || null;
                             if (clientId) {
@@ -851,10 +869,12 @@
                                     return;
                                 }
                             }
+
                             if (incoming.id) {
                                 const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
                                 if (exists) return;
                             }
+
                             const msgObj = { senderId: incoming.senderId, text: incoming.textEncrypted || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
                             appendMessageToDOM(msgObj);
                             try { api.markRead(currentConversationId, userId); } catch (e) { }
@@ -862,24 +882,16 @@
                             return;
                         }
 
-                        const otherId = incoming.senderId === userId ? (currentContact && currentContact.id) || '' : incoming.senderId;
+                        // Encrypted flow: always try to decrypt using helper
+                        const clientId = incoming.clientId || incoming.clientid || null;
                         let text = '';
-                        if (incoming.textEncrypted) {
-                            try {
-                                const aesKey = await getOrCreateAesKeyForPeer(otherId);
-                                if (aesKey) {
-                                    const dec = await E2EE.decryptWithKey(aesKey, incoming.textEncrypted, incoming.iv || incoming.ivB64);
-                                    text = dec || '(verschlüsselt)';
-                                } else {
-                                    text = '(verschlüsselt)';
-                                }
-                            } catch (e) {
-                                console.warn('decrypt on socket message failed', e);
-                                text = '(verschlüsselt)';
-                            }
+                        try {
+                            text = await decryptIncomingText(incoming);
+                        } catch (e) {
+                            console.warn('decryptIncomingText error', e);
+                            text = '(verschlüsselt)';
                         }
 
-                        const clientId = incoming.clientId || incoming.clientid || null;
                         if (clientId) {
                             const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
                             if (tempEl) {
@@ -908,6 +920,7 @@
                         return;
                     }
 
+                    // otherwise: refresh contacts (new messages)
                     await loadContacts();
                 } catch (e) {
                     console.error('socket message handler', e);
@@ -1021,6 +1034,43 @@
         if (contacts.length && contactsContainer) {
             const first = contactsContainer.querySelector('.contact');
             if (first) first.click();
+        }
+
+        // ===== helper: robust decrypt for incoming messages =====
+        async function decryptIncomingText(incoming) {
+            const otherId = (incoming.senderId === userId) ? (currentContact && currentContact.id) || '' : incoming.senderId;
+
+            // 1) try cached aesKey
+            let entry = cryptoCache.get(otherId);
+            let aesKey = entry && entry.aesKey ? entry.aesKey : null;
+
+            // 2) derive if needed (getOrCreateAesKeyForPeer caches the result)
+            if (!aesKey) {
+                aesKey = await getOrCreateAesKeyForPeer(otherId);
+                entry = cryptoCache.get(otherId) || entry || null;
+            }
+
+            // 3) if still no key, try forcing a user fetch & derive once more
+            if (!aesKey) {
+                const uresp = await api.getUser(otherId);
+                if (uresp && uresp.ok && uresp.body && uresp.body.user && uresp.body.user.publicKey) {
+                    aesKey = await getOrCreateAesKeyForPeer(otherId); // should succeed now if publicKey exists
+                }
+            }
+
+            if (!aesKey) return '(verschlüsselt)';
+
+            const cipher = incoming.textEncrypted || incoming.cipher || incoming.cipherB64;
+            const iv = incoming.iv || incoming.ivB64;
+            if (!cipher || !iv) return '(verschlüsselt)';
+
+            try {
+                const dec = await E2EE.decryptWithKey(aesKey, cipher, iv);
+                return dec || '(verschlüsselt)';
+            } catch (e) {
+                console.warn('decryptIncomingText failed', e);
+                return '(verschlüsselt)';
+            }
         }
     });
 })();
