@@ -187,23 +187,6 @@
         const userId = user.id;
         await E2EE.ensureKeypair(userId);
 
-        // === Auto-upload publicKey (sofort nach ensureKeypair) ===
-        try {
-            const pubB64 = localStorage.getItem('ecdh_pub_' + userId);
-            if (pubB64) {
-                if (socket && socket.connected) {
-                    socket.emit('upload_public_key', { publicKey: pubB64 }, (ack) => {
-                        if (!ack || ack.error) {
-                            api.setPublicKey(userId, pubB64).catch(e => console.warn('setPublicKey fallback failed', e));
-                        }
-                    });
-                } else {
-                    api.setPublicKey(userId, pubB64).catch(e => console.warn('setPublicKey failed', e));
-                }
-            }
-        } catch (e) {
-            console.warn('auto upload publicKey error', e);
-        }
 
         const sessionToken = (user && user.sessionToken) ? user.sessionToken : (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).sessionToken : null);
 
@@ -212,6 +195,26 @@
         const socketOptions = { path: '/socket.io', transports: ['websocket'], auth: { sessionToken } };
         let socket = null;
         try { if (typeof io !== 'undefined') socket = io(SOCKET_URL, socketOptions); else console.warn('socket.io client not available'); } catch (e) { console.warn('socket connect failed', e); socket = null; }
+
+        // === Auto-upload publicKey (after socket initialization) ===
+        async function uploadPublicKeyAfterInit() {
+            try {
+                const pubB64 = localStorage.getItem('ecdh_pub_' + userId);
+                if (pubB64) {
+                    if (socket && socket.connected) {
+                        socket.emit('upload_public_key', { publicKey: pubB64 }, (ack) => {
+                            if (!ack || ack.error) {
+                                api.setPublicKey(userId, pubB64).catch(e => console.warn('setPublicKey fallback failed', e));
+                            }
+                        });
+                    } else {
+                        api.setPublicKey(userId, pubB64).catch(e => console.warn('setPublicKey failed', e));
+                    }
+                }
+            } catch (e) {
+                console.warn('auto upload publicKey error', e);
+            }
+        }
 
         // small UI helpers to set user info
         async function fillUserInfo() {
