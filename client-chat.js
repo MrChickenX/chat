@@ -339,18 +339,33 @@
         async function tryDecryptMessage(msg, otherId) {
             if (!msg || !msg.textEncrypted) return '';
             try {
-                // Fast path: cached aesKey
                 const entry = cryptoCache.get(otherId);
-                if (entry && entry.aesKey) {
-                    const dec = await E2EE.decryptWithKey(entry.aesKey, msg.textEncrypted, msg.iv || msg.ivB64);
-                    return dec || '(verschlüsselt)';
+                let aesKey = entry && entry.aesKey ? entry.aesKey : null;
+
+                if (!aesKey) {
+                    aesKey = await getOrCreateAesKeyForPeer(otherId);
+                    if (!aesKey) return '(verschlüsselt)';
+                    // cache result
+                    cryptoCache.set(otherId, { theirPubB64: entry ? entry.theirPubB64 : null, aesKey });
                 }
-                const aes = await getOrCreateAesKeyForPeer(otherId);
-                if (!aes) return '(verschlüsselt)';
-                const dec = await E2EE.decryptWithKey(aes, msg.textEncrypted, msg.iv || msg.ivB64);
-                return dec || '(verschlüsselt)';
+
+                const cipherB64 = msg.textEncrypted;
+                const ivB64 = msg.iv || msg.ivB64;
+                if (!cipherB64 || !ivB64) return '(verschlüsselt)';
+
+                // quick sanity checks
+                const cipherLen = (function (lenB64) { try { return atob(lenB64).length; } catch (e) { return 0; } })(cipherB64);
+                if (cipherLen < 16) {
+                    console.warn('Cipher zu kurz, skip decrypt', { otherId, cipherLen });
+                    return '(verschlüsselt)';
+                }
+
+                const dec = await E2EE.decryptWithKey(aesKey, cipherB64, ivB64);
+                if (!dec) return '(verschlüsselt)';
+                return dec;
             } catch (e) {
-                console.warn('tryDecryptMessage failed', e);
+                // OperationError: usually wrong key/IV/tag
+                console.warn('tryDecryptMessage failed (likely wrong key/iv):', e && e.message ? e.message : e);
                 return '(verschlüsselt)';
             }
         }
