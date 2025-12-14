@@ -464,28 +464,49 @@
         // getOrCreateAesKeyForPeer: CACHE the result and avoid repeated getUser calls when possible
         async function getOrCreateAesKeyForPeer(peerId) {
             try {
+                if (!peerId) return null;
+
+                // quick cache hit
                 if (cryptoCache.has(peerId)) {
-                    const entry = cryptoCache.get(peerId);
-                    if (entry.aesKey) return entry.aesKey;
-                    // entry exists but no aesKey -> try refresh publicKey
+                    const existing = cryptoCache.get(peerId);
+                    if (existing && existing.aesKey) return existing.aesKey;
+                    // else we will try to refresh below
                 }
 
-                // fetch user once
+                // fetch user's public key once
                 const userResp = await api.getUser(peerId);
                 if (!userResp || !userResp.ok || !userResp.body || !userResp.body.user || !userResp.body.user.publicKey) {
+                    // no public key available for peer
                     return null;
                 }
                 const theirPubB64 = userResp.body.user.publicKey;
 
+                // if we already cached a matching public key but no aesKey, attempt to derive again
+                const cached = cryptoCache.get(peerId);
+                if (cached && cached.theirPubB64 === theirPubB64 && cached.aesKey) {
+                    return cached.aesKey;
+                }
+
+                // load local private JWK
                 const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
                 if (!myJwk) throw new Error('No local private key');
 
-                const myPrivKey = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-                const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
-                const aesKey = await getOrCreateAesKeyForPeer(contact.id);
+                const myPrivKey = await crypto.subtle.importKey(
+                    'jwk',
+                    JSON.parse(myJwk),
+                    { name: 'ECDH', namedCurve: 'P-256' },
+                    true,
+                    ['deriveBits']
+                );
 
-                const entry = { theirPubB64, aesKey };
-                cryptoCache.set(peerId, entry);
+                // import peer's raw public key
+                const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
+
+                // derive AES key (this is the important fix: derive instead of recursive call)
+                const aesKey = await E2EE.deriveAESKey(myPrivKey, theirPubKey);
+
+                // cache and return
+                cryptoCache.set(peerId, { theirPubB64, aesKey });
                 return aesKey;
             } catch (e) {
                 console.warn('getOrCreateAesKeyForPeer error', e);
