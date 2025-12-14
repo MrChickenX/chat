@@ -157,7 +157,7 @@
         let currentContact = null;
         let attachedFile = null;
 
-        // crypto cache
+        // crypto cache: peerId => { theirPubB64, aesKey (CryptoKey) }
         const cryptoCache = new Map();
 
         // send dedupe map
@@ -298,38 +298,50 @@
         });
 
         function getIconForFilename(name) {
-            if (!name) return '/sources/icons/other.png';
+            if (!name) return '/chat/sources/icons/other.png';
             const ext = (name.split('.').pop() || '').toLowerCase();
-            if (['xls', 'xlsx', 'csv'].includes(ext)) return '/sources/icons/excel.png';
-            if (['doc', 'docx'].includes(ext)) return '/sources/icons/word.png';
-            if (ext === 'pdf') return '/sources/icons/pdf.png';
-            if (['ppt', 'pptx'].includes(ext)) return '/sources/icons/powerpoint.png';
-            return '/sources/icons/other.png';
+            if (['xls', 'xlsx', 'csv'].includes(ext)) return '/chat/sources/icons/excel.png';
+            if (['doc', 'docx'].includes(ext)) return '/chat/sources/icons/word.png';
+            if (ext === 'pdf') return '/chat/sources/icons/pdf.png';
+            if (['ppt', 'pptx'].includes(ext)) return '/chat/sources/icons/powerpoint.png';
+            return '/chat/sources/icons/other.png';
         }
 
+        // Render contact with lock badge
         function renderContactItem(c) {
             const root = el('div', 'contact');
             root.id = `contact-${c.id}`;
 
             const avatar = el('img', 'avatar');
-            avatar.src = c.avatar || '/sources/avatars/avatar.png';
+            avatar.src = c.avatar || '/chat/sources/avatars/avatar.png';
             root.appendChild(avatar);
 
             const wrapper = el('div');
 
+            const headerRow = el('div', 'contact-header-row');
+
             const nameAnchor = el('a', 'contact-name');
             nameAnchor.id = 'contact-name';
             nameAnchor.textContent = c.nickname || c.username || c.id;
+            headerRow.appendChild(nameAnchor);
 
-            if (c.verified && String(c.verified).toLowerCase() === 'yes') {
-                const svgHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="#000000" style="width:18px;height:18px;margin-left:6px;vertical-align:middle;"><path d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm94-278 226-226-56-58-170 170-86-84-56 56 142 142Z"/></svg>`;
-                nameAnchor.insertAdjacentHTML('beforeend', svgHTML);
-            }
+            // lock badge (🔒 = has key, 🔓 = no key)
+            const lockBadge = el('span', 'contact-lock');
+            lockBadge.style.marginLeft = '8px';
+            lockBadge.textContent = '…'; // loading
+            headerRow.appendChild(lockBadge);
+
+            // check publicKey async
+            api.getUser(c.id).then(u => {
+                if (u && u.user && u.user.publicKey) lockBadge.textContent = '🔒';
+                else lockBadge.textContent = '🔓';
+            }).catch(() => { lockBadge.textContent = '🔓'; });
+
+            wrapper.appendChild(headerRow);
 
             const timeAnchor = el('a', 'last-msg-data');
             timeAnchor.classList.add('new');
             timeAnchor.textContent = c.lastMessageStr || '';
-            wrapper.appendChild(nameAnchor);
             wrapper.appendChild(timeAnchor);
 
             const activity = el('a', 'contact-activity');
@@ -362,7 +374,7 @@
             return root;
         }
 
-        // decryption helper
+        // decryption helper (uses direct derive each time to be safe)
         async function tryDecryptMessage(msg, otherId) {
             if (!msg || !msg.textEncrypted) return '';
             try {
@@ -421,6 +433,18 @@
                 if (headerName) headerName.textContent = contact.nickname || contact.username || contact.id;
                 if (headerStatus) headerStatus.textContent = 'Online';
 
+                // try precompute AES key for this contact (so next send can be encrypted)
+                (async () => {
+                    try {
+                        const k = await getOrCreateAesKeyForPeer(contact.id);
+                        if (k) {
+                            // update lock badge in UI if present
+                            const lockEl = document.querySelector(`#contact-${contact.id} .contact-lock`);
+                            if (lockEl) lockEl.textContent = '🔒';
+                        }
+                    } catch (e) { /* ignore */ }
+                })();
+
                 let convId = contact.conversationId;
                 if (!convId) {
                     const convs = await api.getConversationsForUser(userId);
@@ -448,7 +472,10 @@
                 for (const m of conv.messages || []) {
                     const otherId = m.senderId === userId ? (conv.members.find(x => x !== userId) || '') : m.senderId;
                     let text = '';
-                    if (m.textEncrypted) {
+                    if (m.unencrypted) {
+                        // server flagged as unencrypted -> show plaintext
+                        text = m.textEncrypted || '';
+                    } else if (m.textEncrypted) {
                         const dec = await tryDecryptMessage(m, otherId);
                         text = dec || '(konnte nicht entschlüsselt werden)';
                     }
@@ -474,14 +501,14 @@
                 if (m._tempId) container.dataset.tempId = m._tempId;
 
                 const avatarImg = el('img', 'message-avatar');
-                avatarImg.src = '/sources/avatars/avatar.png';
+                avatarImg.src = '/chat/sources/avatars/avatar.png';
                 const box = el('div', 'message-box' + (m.senderId === userId ? ' my' : ''));
 
                 if (m.attachments && m.attachments.length) {
                     m.attachments.forEach(att => {
                         const mf = el('div', 'message-file');
                         const fi = el('img', 'file-icon');
-                        fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/sources/icons/other.png';
+                        fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/chat/sources/icons/other.png';
                         fi.alt = att.filename || 'file';
                         fi.style.width = '28px'; fi.style.height = '28px'; fi.style.verticalAlign = 'middle';
 
@@ -560,27 +587,35 @@
             }
         }
 
+        // NEW: getOrCreateAesKeyForPeer returns a CryptoKey or null (does not throw if peer has no key)
         async function getOrCreateAesKeyForPeer(peerId) {
-            if (cryptoCache.has(peerId)) {
-                const entry = cryptoCache.get(peerId);
+            try {
+                if (cryptoCache.has(peerId)) {
+                    const entry = cryptoCache.get(peerId);
+                    const userResp = await api.getUser(peerId);
+                    const theirPubB64 = userResp && userResp.user ? (userResp.user.publicKey || '') : '';
+                    if (entry.theirPubB64 === theirPubB64 && entry.aesKey) return entry.aesKey;
+                }
                 const userResp = await api.getUser(peerId);
-                const theirPubB64 = userResp && userResp.user ? (userResp.user.publicKey || '') : '';
-                if (entry.theirPubB64 === theirPubB64 && entry.aesKeyPromise) return entry.aesKeyPromise;
+                if (!userResp || !userResp.user || !userResp.user.publicKey) {
+                    return null; // peer has no publicKey
+                }
+                const theirPubB64 = userResp.user.publicKey;
+                const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
+                if (!myJwk) throw new Error('No local private key');
+                const myPrivKey = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+                const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
+                const aesKey = await E2EE.deriveAESKey(myPrivKey, theirPubKey);
+                const entry = { theirPubB64, aesKey };
+                cryptoCache.set(peerId, entry);
+                return aesKey;
+            } catch (e) {
+                console.warn('getOrCreateAesKeyForPeer error', e);
+                return null;
             }
-            const userResp = await api.getUser(peerId);
-            if (!userResp || !userResp.user || !userResp.user.publicKey) throw new Error('Peer has no publicKey');
-            const theirPubB64 = userResp.user.publicKey;
-            const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
-            if (!myJwk) throw new Error('No local private key');
-            const myPrivKey = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-            const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
-            const aesKeyPromise = E2EE.deriveAESKey(myPrivKey, theirPubKey);
-            const entry = { theirPubB64, aesKeyPromise };
-            cryptoCache.set(peerId, entry);
-            return aesKeyPromise;
         }
 
-        // SEND-LOGIC
+        // SEND-LOGIC (sends unencrypted text if no peer key available; attachments only if encrypted)
         async function sendMessage() {
             const text = (messageInput.value || '').trim();
             if (!text && !attachedFile) return;
@@ -625,11 +660,17 @@
 
                 let textEncrypted = '';
                 let textIv = '';
+                let unencryptedFlag = false;
+
                 if (text && aesKey) {
                     try {
                         const enc = await E2EE.encryptWithKey(aesKey, text);
                         textEncrypted = enc.cipherB64; textIv = enc.ivB64;
-                    } catch (e) { console.warn('encryptWithKey failed', e); }
+                    } catch (e) { console.warn('encryptWithKey failed', e); textEncrypted = text; unencryptedFlag = true; }
+                } else if (text && !aesKey) {
+                    // Peer has no key -> send plaintext (server will mark unencrypted)
+                    textEncrypted = text;
+                    unencryptedFlag = true;
                 }
 
                 const attachments = [];
@@ -639,6 +680,9 @@
                         const enc = await E2EE.encryptBuffer(aesKey, ab);
                         attachments.push({ filename: attachedFile.name, mime: attachedFile.type || 'application/octet-stream', cipher: enc.cipherB64, iv: enc.ivB64 });
                     } catch (e) { console.warn('encrypt attachment failed', e); }
+                } else if (attachedFile && !aesKey) {
+                    // do not send attachments unencrypted
+                    console.warn('Attachment nicht gesendet: Peer hat keinen PublicKey (Attachments werden nicht unverschlüsselt gesendet)');
                 }
 
                 const payload = {
@@ -648,8 +692,9 @@
                     to: currentContact.id,
                     textEncrypted,
                     iv: textIv,
-                    attachments
+                    attachments,
                 };
+                if (unencryptedFlag) payload.unencrypted = true;
 
                 if (socket && socket.connected) {
                     socket.emit('send_message', payload, (ack) => {
@@ -703,7 +748,8 @@
                 if (!serverMsg || !serverMsg.id) return;
                 const exists = messagesContainer.querySelector(`[data-msg-id="${serverMsg.id}"]`);
                 if (exists) return;
-                const msg = { senderId: serverMsg.senderId, text: '(verschlüsselt)', attachments: serverMsg.attachments || [], ts: serverMsg.ts, _id: serverMsg.id };
+                const text = serverMsg.unencrypted ? (serverMsg.textEncrypted || '') : '(verschlüsselt)';
+                const msg = { senderId: serverMsg.senderId, text, attachments: serverMsg.attachments || [], ts: serverMsg.ts, _id: serverMsg.id };
                 renderMessages([msg], { autoScroll: true });
                 return;
             }
@@ -718,7 +764,7 @@
         sendBtn && sendBtn.addEventListener('click', (e) => { e.preventDefault(); sendMessage(); });
         messageInput && messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
-        // socket: incoming message handler
+        // socket: incoming message handler (handles unencrypted)
         if (socket) {
             socket.on('message', async (data) => {
                 try {
@@ -728,6 +774,36 @@
 
                     // belongs to current conversation?
                     if (currentConversationId && convId === currentConversationId) {
+                        // if unencrypted, show directly
+                        if (incoming.unencrypted) {
+                            const clientId = incoming.clientId || incoming.clientid || null;
+                            if (clientId) {
+                                const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
+                                if (tempEl) {
+                                    tempEl.dataset.msgId = incoming.id || '';
+                                    delete tempEl.dataset.tempId;
+                                    const txtEl = tempEl.querySelector('.message-text');
+                                    if (txtEl) txtEl.textContent = incoming.textEncrypted || txtEl.textContent;
+                                    const timeEl = tempEl.querySelector('.message-time');
+                                    if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
+                                    tempEl.classList.remove('send-failed');
+                                    try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                                    loadContacts().catch(() => { });
+                                    return;
+                                }
+                            }
+                            if (incoming.id) {
+                                const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
+                                if (exists) return;
+                            }
+                            const msgObj = { senderId: incoming.senderId, text: incoming.textEncrypted || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
+                            appendMessageToDOM(msgObj);
+                            try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                            loadContacts().catch(() => { });
+                            return;
+                        }
+
+                        // else: encrypted flow
                         const otherId = incoming.senderId === userId ? (currentContact && currentContact.id) || '' : incoming.senderId;
                         let text = '';
                         if (incoming.textEncrypted) {
@@ -743,7 +819,7 @@
                                 const txtEl = tempEl.querySelector('.message-text');
                                 if (txtEl) txtEl.textContent = text || txtEl.textContent;
                                 const timeEl = tempEl.querySelector('.message-time');
-                                if (timeEl) timeEl.textContent = formatTime(incoming.ts || incoming.ts);
+                                if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
                                 tempEl.classList.remove('send-failed');
                                 try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
                                 loadContacts().catch(() => { });
@@ -770,8 +846,26 @@
                 }
             });
 
+            // when contacts update (e.g. someone uploaded publicKey), reload contacts and precompute AES for current contact
+            socket.on('contacts_update', async (data) => {
+                try {
+                    await loadContacts();
+                    const updatedUserId = data && (data.userId || data.contactId || data.updatedUserId);
+                    if (updatedUserId && currentContact && updatedUserId === currentContact.id) {
+                        try {
+                            const k = await getOrCreateAesKeyForPeer(currentContact.id);
+                            if (k) {
+                                const lockEl = document.querySelector(`#contact-${currentContact.id} .contact-lock`);
+                                if (lockEl) lockEl.textContent = '🔒';
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                } catch (e) {
+                    console.error('contacts_update handler', e);
+                }
+            });
+
             socket.on('conversation_update', () => { loadContacts().catch(() => { }); });
-            socket.on('contacts_update', () => { loadContacts().catch(() => { }); });
             socket.on('connect', () => { console.log('[socket] connected', socket.id); });
             socket.on('disconnect', (reason) => { console.log('[socket] disconnected', reason); });
             socket.on('connect_error', (err) => {
@@ -790,7 +884,6 @@
                         alert('Interner Serverfehler bei der Socket-Anmeldung.');
                         break;
                     default:
-                        // nur loggen, um nicht zu nerven
                         console.warn('Socket-Fehler:', msg);
                 }
             });
@@ -804,14 +897,14 @@
             if (m._id) container.dataset.msgId = m._id;
 
             const avatarImg = el('img', 'message-avatar');
-            avatarImg.src = '/sources/avatars/avatar.png';
+            avatarImg.src = '/chat/sources/avatars/avatar.png';
             const box = el('div', 'message-box' + (m.senderId === userId ? ' my' : ''));
 
             if (m.attachments && m.attachments.length) {
                 m.attachments.forEach(att => {
                     const mf = el('div', 'message-file');
                     const fi = el('img', 'file-icon');
-                    fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/sources/icons/other.png';
+                    fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/chat/sources/icons/other.png';
                     fi.alt = att.filename || 'file';
                     fi.style.width = '28px'; fi.style.height = '28px'; fi.style.verticalAlign = 'middle';
 
@@ -865,4 +958,4 @@
             if (first) first.click();
         }
     });
-})(); 
+})();
