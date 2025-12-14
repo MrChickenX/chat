@@ -586,7 +586,7 @@
             messagesContainer.innerHTML = '';
             const frag = document.createDocumentFragment();
 
-            msgs.forEach(m => {
+            msgs.forEach(async (m) => {
                 const container = el('div', 'message-container' + (m.senderId === userId ? ' my' : ''));
                 if (m._id) container.dataset.msgId = m._id;
                 if (m._tempId) container.dataset.tempId = m._tempId;
@@ -595,32 +595,16 @@
                 avatarImg.src = '/chat/sources/avatars/avatar.png';
                 const box = el('div', 'message-box' + (m.senderId === userId ? ' my' : ''));
 
-                if (m.attachments && m.attachments.length) {
-                    m.attachments.forEach(att => {
-                        const mf = el('div', 'message-file');
-                        const fi = el('img', 'file-icon');
-                        fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/chat/sources/icons/other.png';
-                        fi.alt = att.filename || 'file';
-                        fi.style.width = '28px'; fi.style.height = '28px'; fi.style.verticalAlign = 'middle';
-
-                        const fp = el('div', 'file-property');
-                        const name = el('a', 'file-name'); name.textContent = att.filename || 'file';
-                        const btn = el('button', 'file-download'); btn.textContent = 'Download';
-                        btn.addEventListener('click', () => downloadAttachment(m, att));
-
-                        fp.appendChild(name);
-                        fp.appendChild(document.createElement('br'));
-                        fp.appendChild(btn);
-
-                        mf.appendChild(fi);
-                        mf.appendChild(fp);
-                        box.appendChild(mf);
-                    });
+                // Decrypt message text if encrypted
+                let displayText = m.text;
+                if (!displayText || displayText === '(verschlüsselt)') {
+                    const otherId = m.senderId === userId ? (currentContact && currentContact.id) : m.senderId;
+                    displayText = await tryDecryptMessage(m, otherId);
                 }
 
-                if (m.text && String(m.text).trim().length) {
+                if (displayText && String(displayText).trim().length) {
                     const textNode = el('div', 'message-text');
-                    textNode.textContent = m.text;
+                    textNode.textContent = displayText;
                     if (m.attachments && m.attachments.length) textNode.style.marginTop = '6px';
                     box.appendChild(textNode);
                 }
@@ -628,6 +612,13 @@
                 const time = el('a', 'message-time');
                 time.textContent = formatTime(m.ts);
                 time.style.display = 'block';
+                // Automatically decrypt incoming messages when received
+                const decryptedText = await tryDecryptMessage(m, m.senderId);
+                if (decryptedText) {
+                    const textNode = el('div', 'message-text');
+                    textNode.textContent = decryptedText;
+                    box.appendChild(textNode);
+                }
                 time.style.marginTop = '6px';
                 time.style.fontSize = '11px';
                 time.style.color = '#666';
