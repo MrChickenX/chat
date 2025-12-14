@@ -318,26 +318,10 @@
 
             const wrapper = el('div');
 
-            const headerRow = el('div', 'contact-header-row');
-
             const nameAnchor = el('a', 'contact-name');
             nameAnchor.id = 'contact-name';
             nameAnchor.textContent = c.nickname || c.username || c.id;
-            headerRow.appendChild(nameAnchor);
-
-            // lock badge (🔒 = has key, 🔓 = no key)
-            const lockBadge = el('span', 'contact-lock');
-            lockBadge.style.marginLeft = '8px';
-            lockBadge.textContent = '…'; // loading
-            headerRow.appendChild(lockBadge);
-
-            // check publicKey async
-            api.getUser(c.id).then(u => {
-                if (u && u.user && u.user.publicKey) lockBadge.textContent = '🔒';
-                else lockBadge.textContent = '🔓';
-            }).catch(() => { lockBadge.textContent = '🔓'; });
-
-            wrapper.appendChild(headerRow);
+            wrapper.appendChild(nameAnchor);
 
             const timeAnchor = el('a', 'last-msg-data');
             timeAnchor.classList.add('new');
@@ -362,7 +346,7 @@
             root.appendChild(wrapper);
 
             root.addEventListener('click', async () => {
-                document.querySelectorAll('.contacts .contact').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('.contacts .contact').forEach(elm => elm.classList.remove('active'));
                 root.classList.add('active');
                 if (typeof openConversation === 'function') {
                     try { await openConversation(c); } catch (e) { console.error('openConversation error', e); }
@@ -615,6 +599,8 @@
             }
         }
 
+        const lastSendTimes = new Map();
+
         // SEND-LOGIC (sends unencrypted text if no peer key available; attachments only if encrypted)
         async function sendMessage() {
             const text = (messageInput.value || '').trim();
@@ -623,10 +609,25 @@
             if (!currentContact) { if (!contacts.length) return alert('Kein Kontakt ausgewählt'); currentContact = contacts[0]; }
 
             const sendKey = makeSendKey(currentConversationId, text, attachedFile);
+
+            // 1) Wenn bereits ein In-Flight-Send mit exakt diesem Key existiert, blockiere (keine Doppel-Acks)
             if (ongoingSends.has(sendKey)) {
-                console.warn('Duplicate send suppressed for key', sendKey);
+                console.warn('Duplicate send suppressed for key (ongoing):', sendKey);
                 return;
             }
+
+            // 2) Kurzes Zeitfenster blockieren (z.B. versehentliche Doppel-Klicks)
+            const nowTs = Date.now();
+            const lastTs = lastSendTimes.get(sendKey) || 0;
+            const MIN_REPEAT_MS = 800; // wenn gleiche Nachricht innerhalb 800ms: unterdrücken
+            if (nowTs - lastTs < MIN_REPEAT_MS) {
+                console.warn('Duplicate send suppressed for key (time-window):', sendKey);
+                return;
+            }
+            // record send time
+            lastSendTimes.set(sendKey, nowTs);
+
+            // Markiere als in-flight
             ongoingSends.set(sendKey, true);
 
             const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
