@@ -365,21 +365,65 @@
                 }
                 const arr = (resp.body && resp.body.contacts) ? resp.body.contacts : [];
                 const enriched = [];
+
                 for (const c of arr) {
                     let preview = '';
                     let lastMessageStr = '';
+
+                    // Wenn server eine lastMessageMeta liefert, nutzen wir sie zunächst
                     if (c.lastMessageMeta) {
                         const last = c.lastMessageMeta;
-                        if (last.textEncrypted) {
-                            preview = '(verschlüsselt)';
-                            lastMessageStr = formatTime(last.ts);
-                        } else {
+                        lastMessageStr = formatTime(last.ts);
+
+                        // Heuristik: fehlt iv => vermutlich unverschluesselt/plaintext
+                        const ivPresent = !!(last.iv);
+
+                        if (!ivPresent) {
+                            // Plaintext direkt anzeigen (Server speichert text im Feld textEncrypted)
                             preview = last.textEncrypted || '';
-                            lastMessageStr = formatTime(last.ts);
+                        } else {
+                            // Letzte Nachricht scheint verschluesselt zu sein:
+                            // Lade die Konversation und suche die letzte unverschluesselte
+                            // oder die letzte Nachricht, die wir erfolgreich entschluesseln koennen.
+                            if (c.conversationId) {
+                                try {
+                                    const convResp = await api.getConversation(c.conversationId);
+                                    if (convResp && convResp.ok && convResp.body && convResp.body.conversation) {
+                                        const conv = convResp.body.conversation;
+                                        const msgs = conv.messages || [];
+                                        // Gehe Rueckwaerts durch die letzten Nachrichten (grosseres conv koennte teuer sein)
+                                        const maxCheck = 99;
+                                        for (let i = msgs.length - 1; i >= 0 && i >= msgs.length - maxCheck; i--) {
+                                            const m = msgs[i];
+                                            // Falls Server eine unencrypted-Flag setzt -> sofort verwenden
+                                            if (m.unencrypted) {
+                                                const txt = m.textEncrypted || '';
+                                                preview = (m.senderId === userId ? 'Du: ' : '') + txt;
+                                                break;
+                                            }
+                                            // Versuch zu entschluesseln (wenn AES-Key verfuegbar)
+                                            if (m.textEncrypted) {
+                                                const otherId = (m.senderId === userId) ? (conv.members.find(x => x !== userId) || '') : m.senderId;
+                                                const dec = await tryDecryptMessage(m, otherId);
+                                                if (dec && dec !== '(verschlüsselt)') {
+                                                    preview = (m.senderId === userId ? 'Du: ' : '') + dec;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn('Failed to fetch/scan conversation for preview', e);
+                                }
+                            }
+                            // Wenn wir bis hierhin keine unverschluesselte/entschluesselte Nachricht fanden:
+                            if (!preview) preview = '(verschlüsselt)';
                         }
                     }
+
                     enriched.push({ ...c, preview, lastMessageStr, nickname: c.nickname || c.username });
                 }
+
                 contacts = enriched;
                 if (contactsContainer) {
                     contactsContainer.innerHTML = '';

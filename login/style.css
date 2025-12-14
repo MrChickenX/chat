@@ -146,3 +146,35 @@ a:active {
     color: var(--error);
     font-weight: 600;
 }
+
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+}
+
+.topic {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.topic p {
+    margin: 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.topic p a {
+    color: #007bff;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.topic input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+}

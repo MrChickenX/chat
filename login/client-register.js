@@ -98,10 +98,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const nickname = form.querySelector('#nickname') ? form.querySelector('#nickname').value.trim() : '';
         const password = form.querySelector('#password').value;
         const repeatPassword = form.querySelector('#repeatPassword').value;
+        const policy = form.querySelector('#policy').checked;
+        const dataPolicy = form.querySelector('#data-policy').checked;
 
-        if (!username) { alert('Bitte Benutzername eingeben'); return; }
-        if (!password) { alert('Bitte Passwort eingeben'); return; }
-        if (password !== repeatPassword) { alert('Passwoerter stimmen nicht ueberein'); return; }
+        if (!username) { document.getElementById("error").innerHTML = "Bitte Benutzernamen eingeben"; return; }
+        if (!password) { document.getElementById("error").innerHTML = "Bitte Passwort eingeben"; return; }
+        if (password !== repeatPassword) { document.getElementById("error").innerHTML = "Passwörter stimmen nicht überrein"; return; }
+        if (!policy) { document.getElementById("error").innerHTML = "Nutzungsbedinungen nicht akteptiert"; return; }
+        if (!dataPolicy) { document.getElementById("error").innerHTML = "Nutzungsbedinungen nicht akteptiert"; return; }
 
         try {
             const resp = await fetch(`${API_URL}/register`, {
@@ -128,11 +132,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 // redirect
                 window.location.href = '/chat/index.html';
             } else {
-                alert('Fehler: ' + (data.error || 'unbekannt'));
+                document.getElementById("error").innerHTML = "Fehler: " + (data.error || 'unbekannt');
             }
         } catch (err) {
             console.error('[client] register error', err);
-            alert('Netzwerkfehler');
+            document.getElementById("error").innerHTML = "Netzwerkfehler";
         }
     });
 });
