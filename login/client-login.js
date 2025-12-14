@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!password) { document.getElementById("error").innerHTML = "Bitte Passwort eingeben"; return; }
 
         try {
-            const resp = await fetch('/login', {
+            const resp = await fetch('/chat/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })

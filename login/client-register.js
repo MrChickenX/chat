@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (password !== repeatPassword) { alert('Passwoerter stimmen nicht ueberein'); return; }
 
         try {
-            const resp = await fetch('/register', {
+            const resp = await fetch('/chat/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, nickname })
