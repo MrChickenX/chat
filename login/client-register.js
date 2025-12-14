@@ -1,3 +1,92 @@
+const API_URL = window.API_URL || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
+const SOCKET_URL = window.SOCKET_URL || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
+const SOCKET_IO_CDN = 'https://cdn.socket.io/4.7.1/socket.io.min.js';
+
+function loadSocketIoClientIfNeeded() {
+    return new Promise((resolve, reject) => {
+        if (!SOCKET_URL) return resolve(); // keine socket-url konfiguriert
+        if (typeof io !== 'undefined') return resolve();
+        const s = document.createElement('script');
+        s.src = SOCKET_IO_CDN;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('socket.io client load failed'));
+        document.head.appendChild(s);
+    });
+}
+
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const sub = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, Array.from(sub));
+    }
+    return btoa(binary);
+}
+
+async function ensureKeyAndUploadAfterRegister(userId) {
+    const keyName = 'ecdh_jwk_' + userId;
+    const pubName = 'ecdh_pub_' + userId;
+
+    if (localStorage.getItem(pubName) && localStorage.getItem(keyName)) {
+        const pub = localStorage.getItem(pubName);
+        // versuche socket upload wenn möglich, ansonsten REST fallback
+        if (SOCKET_URL && typeof io !== 'undefined') {
+            const sock = io(SOCKET_URL, { transports: ['websocket'] });
+            sock.on('connect', () => {
+                sock.emit('upload_public_key', { publicKey: pub }, (r) => {
+                    if (!r || !r.ok) console.warn('upload pubkey (socket) failed', r);
+                    sock.disconnect();
+                });
+            });
+            sock.on('connect_error', (e) => { console.warn('socket connect error', e); sock.disconnect(); });
+        } else {
+            fetch(`${API_URL}/user/${encodeURIComponent(userId)}/publicKey`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ publicKey: pub })
+            }).catch(() => { });
+        }
+        return;
+    }
+
+    const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+    const rawPub = await crypto.subtle.exportKey('raw', kp.publicKey);
+    const pubB64 = arrayBufferToBase64(rawPub);
+    const jwkPriv = await crypto.subtle.exportKey('jwk', kp.privateKey);
+
+    localStorage.setItem(pubName, pubB64);
+    localStorage.setItem(keyName, JSON.stringify(jwkPriv));
+
+    if (SOCKET_URL) {
+        try {
+            await loadSocketIoClientIfNeeded();
+            if (typeof io !== 'undefined') {
+                const sock = io(SOCKET_URL, { transports: ['websocket'] });
+                sock.on('connect', () => {
+                    sock.emit('upload_public_key', { publicKey: pubB64 }, (r) => {
+                        if (!r || !r.ok) console.warn('upload pubkey (socket) failed', r);
+                        sock.disconnect();
+                    });
+                });
+                sock.on('connect_error', (e) => { console.warn('socket connect error', e); sock.disconnect(); });
+                return;
+            }
+        } catch (e) {
+            console.warn('socket upload attempt failed, falling back to REST', e);
+            // fallthrough to REST
+        }
+    }
+
+    // REST fallback
+    fetch(`${API_URL}/user/${encodeURIComponent(userId)}/publicKey`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: pubB64 })
+    }).catch((e) => { console.warn('upload pubkey (rest) failed', e); });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('register-form');
     if (!form) return;
@@ -15,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (password !== repeatPassword) { alert('Passwoerter stimmen nicht ueberein'); return; }
 
         try {
-            const resp = await fetch('/chat/register', {
+            const resp = await fetch(`${API_URL}/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, nickname })
@@ -25,59 +114,18 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[client] register response', resp.status, data);
 
             if (resp.ok && data.ok) {
-                // generiere keypair und lade publicKey hoch, dann speichern & weiterleiten
-                function arrayBufferToBase64(buffer) {
-                    const bytes = new Uint8Array(buffer);
-                    const chunkSize = 0x8000;
-                    let binary = '';
-                    for (let i = 0; i < bytes.length; i += chunkSize) {
-                        const sub = bytes.subarray(i, i + chunkSize);
-                        binary += String.fromCharCode.apply(null, Array.from(sub));
-                    }
-                    return btoa(binary);
+                // keys generieren + upload (socket bevorzugt, resp liefert user id)
+                try {
+                    await ensureKeyAndUploadAfterRegister(data.id);
+                } catch (e) {
+                    console.warn('ensureKeyAndUploadAfterRegister error', e);
                 }
 
-                async function ensureKeyAndUpload(userId) {
-                    const keyName = 'ecdh_jwk_' + userId;
-                    const pubName = 'ecdh_pub_' + userId;
-                    if (localStorage.getItem(pubName) && localStorage.getItem(keyName)) {
-                        await fetch(`/user/${encodeURIComponent(userId)}/publicKey`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ publicKey: localStorage.getItem(pubName) })
-                        }).catch(() => { });
-                        return;
-                    }
-                    const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-                    const rawPub = await crypto.subtle.exportKey('raw', kp.publicKey);
-                    const pubB64 = arrayBufferToBase64(rawPub);
-                    const jwkPriv = await crypto.subtle.exportKey('jwk', kp.privateKey);
-
-                    localStorage.setItem(pubName, pubB64);
-                    localStorage.setItem(keyName, JSON.stringify(jwkPriv));
-
-                    await fetch(`/user/${encodeURIComponent(userId)}/publicKey`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ publicKey: pubB64 })
-                    }).catch((e) => { console.warn('upload pubkey failed', e); });
-                }
-
-                // erst keys, dann speichern + redirect
-                await ensureKeyAndUpload(data.id);
-                const user = { id: data.id, username: data.username };
+                // speichere minimalen User inkl sessionToken
+                const user = { id: data.id, username: data.username, sessionToken: data.sessionToken };
                 localStorage.setItem('user', JSON.stringify(user));
 
-                if (resp.ok && data.ok) {
-                    // speichere minimalen User im localStorage inklusive sessionToken
-                    const user = { id: data.id, username: data.username, sessionToken: data.sessionToken };
-                    localStorage.setItem('user', JSON.stringify(user));
-
-                    // ensure keypair & upload (optional): call ensureKeyAndUpload(user.id) if you want synchronously
-                    // Weiterleitung zum Chat
-                    window.location.href = '/chat/index.html';
-                }
-
+                // redirect
                 window.location.href = '/chat/index.html';
             } else {
                 alert('Fehler: ' + (data.error || 'unbekannt'));

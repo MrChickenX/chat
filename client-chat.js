@@ -1,54 +1,53 @@
 (() => {
-    const api = {
-        getContacts: (userId) => fetch(`/contacts?userId=${encodeURIComponent(userId)}`).then(r => r.json()),
-        getConversation: (convId) => fetch(`/conversation/${encodeURIComponent(convId)}`).then(r => r.json()),
-        getConversationsForUser: (userId) => fetch(`/conversations?userId=${encodeURIComponent(userId)}`).then(r => r.json()),
-        createConversation: (members) => fetch('/conversation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members }) }).then(r => r.json()),
-        postMessage: (payload) => fetch('/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json()),
-        markRead: (convId, userId) => fetch(`/conversation/${encodeURIComponent(convId)}/read`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) }).then(r => r.json()),
-        getUser: (id) => fetch(`/user/${encodeURIComponent(id)}`).then(r => r.json()),
-        setPublicKey: (id, publicKeyBase64) => fetch(`/user/${encodeURIComponent(id)}/publicKey`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicKey: publicKeyBase64 }) }).then(r => r.json()),
-        addContact: (id, contactUsername) => fetch(`/user/${encodeURIComponent(id)}/contacts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contactUsername }) }).then(r => r.json())
-    };
+    const API_BASE = window.__API_BASE__ || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
+    const SOCKET_URL = window.__SOCKET_URL__ || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
+    const SOCKET_IO_CDN = 'https://cdn.socket.io/4.7.1/socket.io.min.js';
 
-    const API_BASE = window.__API_BASE__ || '';
-    const socketUrl = "https://140.238.211.237:3000";
-    const rawUser = localStorage.getItem('user');
-    const user = rawUser ? JSON.parse(rawUser) : null;
-    const sessionToken = (user && user.sessionToken) ? user.sessionToken : null;
-
-    const socket = io(socketUrl, {
-        path: '/socket.io',
-        auth: { sessionToken },
-        transports: ['websocket', 'polling']
-    });
-
-    if (!sessionToken) {
-        console.warn('Kein sessionToken vorhanden, Socket.IO Auth wird null sein');
+    // Lade socket.io client falls nötig
+    function loadSocketIoClient() {
+        return new Promise((resolve, reject) => {
+            if (typeof io !== 'undefined') return resolve();
+            const s = document.createElement('script');
+            s.src = SOCKET_IO_CDN;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('socket.io client load failed'));
+            document.head.appendChild(s);
+        });
     }
 
-    function apiFetch(path, opts = {}) {
+    // Helper: API Fetch (nutzt API_BASE)
+    async function apiFetch(path, opts = {}) {
         const url = API_BASE ? `${API_BASE}${path}` : path;
-        return fetch(url, {
+        const res = await fetch(url, {
             ...opts,
-            credentials: 'include', // wenn du Cookies nutzt; ansonsten entferne
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
                 ...(opts.headers || {})
             }
-        }).then(async res => {
-            if (!res.ok) {
-                const text = await res.text();
-                console.error('apiFetch error', res.status, text.slice(0, 200));
-                throw new Error(`HTTP ${res.status}`);
-            }
-            // safe parse
-            const ct = res.headers.get('content-type') || '';
-            if (ct.includes('application/json')) return res.json();
-            return res.text();
         });
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status} ${text.slice(0, 200)}`);
+        }
+        const ct = res.headers.get('content-type') || '';
+        return ct.includes('application/json') ? res.json() : res.text();
     }
 
+    // API convenience (nutzt apiFetch)
+    const api = {
+        getContacts: (userId) => apiFetch(`/contacts?userId=${encodeURIComponent(userId)}`),
+        getConversation: (convId) => apiFetch(`/conversation/${encodeURIComponent(convId)}`),
+        getConversationsForUser: (userId) => apiFetch(`/conversations?userId=${encodeURIComponent(userId)}`),
+        createConversation: (members) => apiFetch('/conversation', { method: 'POST', body: JSON.stringify({ members }) }),
+        postMessage: (payload) => apiFetch('/message', { method: 'POST', body: JSON.stringify(payload) }),
+        markRead: (convId, userId) => apiFetch(`/conversation/${encodeURIComponent(convId)}/read`, { method: 'PATCH', body: JSON.stringify({ userId }) }),
+        getUser: (id) => apiFetch(`/user/${encodeURIComponent(id)}`),
+        setPublicKey: (id, publicKeyBase64) => apiFetch(`/user/${encodeURIComponent(id)}/publicKey`, { method: 'POST', body: JSON.stringify({ publicKey: publicKeyBase64 }) }),
+        addContact: (id, contactUsername) => apiFetch(`/user/${encodeURIComponent(id)}/contacts`, { method: 'POST', body: JSON.stringify({ contactUsername }) })
+    };
+
+    // base64 helpers
     function arrayBufferToBase64(buffer) {
         const bytes = new Uint8Array(buffer);
         const chunkSize = 0x8000;
@@ -67,11 +66,8 @@
         return bytes.buffer;
     }
 
-    function el(tag, cls) {
-        const e = document.createElement(tag);
-        if (cls) e.className = cls;
-        return e;
-    }
+    // DOM helpers
+    function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
     function formatTime(ts) {
         if (!ts) return '';
         const d = new Date(ts);
@@ -80,7 +76,7 @@
         return d.toLocaleDateString();
     }
 
-    // E2EE helpers (unchanged)...
+    // E2EE helpers (wie von dir)
     const E2EE = {
         async ensureKeypair(userId) {
             const storedPriv = localStorage.getItem('ecdh_jwk_' + userId);
@@ -143,20 +139,8 @@
         }
     };
 
+    // Haupt-Init
     document.addEventListener('DOMContentLoaded', async () => {
-        const raw = localStorage.getItem('user');
-        const user = raw ? JSON.parse(raw) : null;
-        if (!user || !user.id) {
-            window.location.href = '/chat/login/login.html';
-            return;
-        }
-        const userId = user.id;
-        await E2EE.ensureKeypair(userId);
-        const sessionToken = (user && user.sessionToken) ? user.sessionToken : (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).sessionToken : null);
-
-        // socket
-        const socket = io({ auth: { sessionToken } });
-
         // UI refs
         const contactsContainer = document.querySelector('.contacts');
         const messagesContainer = document.querySelector('main.chat-messages') || document.querySelector('.chat-messages');
@@ -173,46 +157,81 @@
         let currentContact = null;
         let attachedFile = null;
 
-        // cache for peer publickey/aesKey to speed up repeated sends
-        // key: peerId => { theirPubB64, aesKeyPromise }
+        // crypto cache
         const cryptoCache = new Map();
 
-        // ---------- NEW: in-flight send dedupe map ----------
-        // key => true while sending (key = convId|text|filename)
+        // send dedupe map
         const ongoingSends = new Map();
-
         function makeSendKey(convId, text, file) {
             const t = String(text || '').trim();
             const fname = file && file.name ? file.name : '';
-            // Note: we do NOT include timestamp/random here so duplicates (same content) are detected
             return `${convId || 'nocv'}|${t}|${fname}`;
         }
 
-        function setText(selectors, text) {
-            selectors.forEach(sel => {
-                document.querySelectorAll(sel).forEach(el => {
-                    if (el) el.textContent = text;
-                });
-            });
+        // load user
+        const raw = localStorage.getItem('user');
+        const user = raw ? JSON.parse(raw) : null;
+        if (!user || !user.id) {
+            window.location.href = '/chat/login/login.html';
+            return;
+        }
+        const userId = user.id;
+        await E2EE.ensureKeypair(userId);
+
+        const sessionToken = (user && user.sessionToken) ? user.sessionToken : (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).sessionToken : null);
+
+        // Ensure socket.io client loaded and connect
+        try {
+            await loadSocketIoClient();
+        } catch (e) {
+            console.warn('Could not load socket.io client from CDN, socket functionality may be unavailable', e);
         }
 
-        try {
-            const me = await api.getUser(userId);
-            if (me.ok && me.user) {
-                setText(['#username-display', '.username-display', '[data-username]'], me.user.username || '');
-                setText(['#nickname-display', '.nickname-display', '[data-nickname]'], me.user.nickname || me.user.username || '');
-                setText(['#user-id', '[data-userid]'], me.user.id || '');
-                setText(['#user-verified', '[data-verified]'], me.user.verified || '');
-                setText(['#user-publickey', '[data-publickey]'], me.user.publicKey || '');
-                if (me.user.avatar) {
-                    document.querySelectorAll('.avatar, .user-avatar, [data-avatar]').forEach(img => {
-                        if (img && img.tagName && img.tagName.toLowerCase() === 'img') img.src = me.user.avatar;
-                        else if (img) img.style.backgroundImage = `url(${me.user.avatar})`;
-                    });
-                }
-            }
-        } catch (e) { /* ignore */ }
+        const socketOptions = {
+            path: '/socket.io',
+            transports: ['websocket'],
+            auth: { sessionToken }
+        };
 
+        let socket = null;
+        try {
+            // if io exists, connect
+            if (typeof io !== 'undefined') {
+                socket = io(SOCKET_URL, socketOptions);
+            } else {
+                console.warn('socket.io client not available, will use REST fallback for sends');
+            }
+        } catch (e) {
+            console.warn('socket connect failed', e);
+            socket = null;
+        }
+
+        if (!sessionToken) {
+            console.warn('Kein sessionToken vorhanden, Socket.IO Auth wird null sein');
+        }
+
+        // small UI helpers to set user info
+        async function fillUserInfo() {
+            try {
+                const me = await api.getUser(userId);
+                if (me && me.user) {
+                    const u = me.user;
+                    ['#username-display', '.username-display', '[data-username]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.username || '')));
+                    ['#nickname-display', '.nickname-display', '[data-nickname]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.nickname || u.username || '')));
+                    ['#user-id', '[data-userid]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.id || '')));
+                    ['#user-verified', '[data-verified]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.verified || '')));
+                    if (u.avatar) {
+                        document.querySelectorAll('.avatar, .user-avatar, [data-avatar]').forEach(img => {
+                            if (img && img.tagName && img.tagName.toLowerCase() === 'img') img.src = u.avatar;
+                            else if (img) img.style.backgroundImage = `url(${u.avatar})`;
+                        });
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+        fillUserInfo();
+
+        // logout
         document.querySelectorAll('#logout-btn, .logout-btn, [data-logout]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -221,6 +240,7 @@
             });
         });
 
+        // add contact
         addBtn && addBtn.addEventListener('click', async () => {
             const name = prompt('Benutzername der Person eingeben:');
             if (!name) return;
@@ -248,9 +268,12 @@
         const fileInput = el('input'); fileInput.type = 'file'; fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
         attachBtn && attachBtn.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (ev) => { attachedFile = ev.target.files[0] || null; if (attachedFile) messageInput.placeholder = 'Datei angehängt: ' + attachedFile.name; else messageInput.placeholder = 'Nachricht ...'; });
+        fileInput.addEventListener('change', (ev) => {
+            attachedFile = ev.target.files[0] || null;
+            if (attachedFile) messageInput.placeholder = 'Datei angehängt: ' + attachedFile.name; else messageInput.placeholder = 'Nachricht ...';
+        });
 
-        // emoji picker unchanged...
+        // emoji
         function createEmojiPicker() {
             const emojis = ['😀', '😁', '😂', '😉', '😊', '😍', '😎', '😢', '👍', '🙏', '🔥', '🎉', '❤️'];
             const box = el('div', 'emoji-picker');
@@ -299,11 +322,7 @@
             nameAnchor.textContent = c.nickname || c.username || c.id;
 
             if (c.verified && String(c.verified).toLowerCase() === 'yes') {
-                const svgHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="#000000" style="width:18px;height:18px;margin-left:6px;vertical-align:middle;">
-                        <path d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm94-278 226-226-56-58-170 170-86-84-56 56 142 142Z"/>
-                    </svg>
-                `;
+                const svgHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="#000000" style="width:18px;height:18px;margin-left:6px;vertical-align:middle;"><path d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm94-278 226-226-56-58-170 170-86-84-56 56 142 142Z"/></svg>`;
                 nameAnchor.insertAdjacentHTML('beforeend', svgHTML);
             }
 
@@ -343,12 +362,12 @@
             return root;
         }
 
-        // decryption helper (unchanged)
+        // decryption helper
         async function tryDecryptMessage(msg, otherId) {
             if (!msg || !msg.textEncrypted) return '';
             try {
                 const userResp = await api.getUser(otherId);
-                if (!userResp.ok || !userResp.user.publicKey) return '(verschlüsselt)';
+                if (!userResp || !userResp.user || !userResp.user.publicKey) return '(verschlüsselt)';
                 const theirPub = await E2EE.importPeerPublicKey(userResp.user.publicKey);
                 const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
                 if (!myJwk) return '(verschlüsselt)';
@@ -364,9 +383,8 @@
 
         async function loadContacts() {
             try {
-                const resp = await apiFetch(`/contacts?userId=${encodeURIComponent(userId)}`)
-                    .then(x => typeof x === 'string' ? JSON.parse(x) : x);
-                if (!resp.ok) return;
+                const resp = await api.getContacts(userId);
+                if (!resp || !resp.ok) return;
                 const arr = resp.contacts || [];
                 const enriched = [];
                 for (const c of arr) {
@@ -374,7 +392,7 @@
                     let lastMessageStr = '';
                     if (c.conversationId) {
                         const convResp = await api.getConversation(c.conversationId);
-                        if (convResp.ok) {
+                        if (convResp && convResp.ok) {
                             const conv = convResp.conversation;
                             const last = conv.messages && conv.messages.length ? conv.messages[conv.messages.length - 1] : null;
                             if (last) {
@@ -388,8 +406,10 @@
                     enriched.push({ ...c, preview, lastMessageStr, nickname: c.nickname || c.username });
                 }
                 contacts = enriched;
-                contactsContainer.innerHTML = '';
-                contacts.forEach(c => contactsContainer.appendChild(renderContactItem(c)));
+                if (contactsContainer) {
+                    contactsContainer.innerHTML = '';
+                    contacts.forEach(c => contactsContainer.appendChild(renderContactItem(c)));
+                }
             } catch (err) {
                 console.error('loadContacts error', err);
             }
@@ -398,30 +418,30 @@
         async function openConversation(contact) {
             try {
                 currentContact = contact;
-                headerName && (headerName.textContent = contact.nickname || contact.username || contact.id);
-                headerStatus && (headerStatus.textContent = 'Online');
+                if (headerName) headerName.textContent = contact.nickname || contact.username || contact.id;
+                if (headerStatus) headerStatus.textContent = 'Online';
 
                 let convId = contact.conversationId;
                 if (!convId) {
                     const convs = await api.getConversationsForUser(userId);
-                    if (convs.ok) {
+                    if (convs && convs.ok) {
                         const found = (convs.conversations || []).find(c => (c.members || []).includes(contact.id));
                         if (found) convId = found.id;
                     }
                 }
                 if (!convId) {
                     currentConversationId = null;
-                    messagesContainer.innerHTML = '';
+                    if (messagesContainer) messagesContainer.innerHTML = '';
                     return;
                 }
                 currentConversationId = convId;
 
-                if (socket && currentConversationId) {
-                    socket.emit('join_conv', currentConversationId);
+                if (socket && socket.connected) {
+                    socket.emit('join_conv', currentConversationId, () => { });
                 }
 
                 const resp = await api.getConversation(convId);
-                if (!resp.ok) { messagesContainer.innerHTML = ''; return; }
+                if (!resp || !resp.ok) { if (messagesContainer) messagesContainer.innerHTML = ''; return; }
                 const conv = resp.conversation;
 
                 const msgs = [];
@@ -435,7 +455,7 @@
                     msgs.push({ ...m, text });
                 }
 
-                renderMessages(msgs.map(mm => ({ senderId: mm.senderId, text: mm.text, attachments: mm.attachments || [], ts: mm.ts })), { autoScroll: true });
+                renderMessages(msgs.map(mm => ({ senderId: mm.senderId, text: mm.text, attachments: mm.attachments || [], ts: mm.ts, _id: mm.id })), { autoScroll: true });
                 await api.markRead(convId, userId).catch(() => { });
                 await loadContacts();
             } catch (e) {
@@ -444,6 +464,7 @@
         }
 
         function renderMessages(msgs, opts = { autoScroll: false }) {
+            if (!messagesContainer) return;
             messagesContainer.innerHTML = '';
             const frag = document.createDocumentFragment();
 
@@ -521,7 +542,7 @@
             try {
                 const otherId = messageObj.senderId === userId ? (currentContact && currentContact.id) : messageObj.senderId;
                 const uresp = await api.getUser(otherId);
-                if (!uresp.ok) return alert('Konnte Absender nicht finden');
+                if (!uresp || !uresp.user) return alert('Konnte Absender nicht finden');
                 const theirPubB64 = uresp.user.publicKey;
                 if (!theirPubB64) return alert('Kein PublicKey');
                 const theirPub = await E2EE.importPeerPublicKey(theirPubB64);
@@ -539,16 +560,15 @@
             }
         }
 
-        // --- AES key cache helper (unchanged) ---
         async function getOrCreateAesKeyForPeer(peerId) {
             if (cryptoCache.has(peerId)) {
                 const entry = cryptoCache.get(peerId);
                 const userResp = await api.getUser(peerId);
-                const theirPubB64 = userResp.ok ? (userResp.user.publicKey || '') : '';
+                const theirPubB64 = userResp && userResp.user ? (userResp.user.publicKey || '') : '';
                 if (entry.theirPubB64 === theirPubB64 && entry.aesKeyPromise) return entry.aesKeyPromise;
             }
             const userResp = await api.getUser(peerId);
-            if (!userResp.ok || !userResp.user.publicKey) throw new Error('Peer has no publicKey');
+            if (!userResp || !userResp.user || !userResp.user.publicKey) throw new Error('Peer has no publicKey');
             const theirPubB64 = userResp.user.publicKey;
             const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
             if (!myJwk) throw new Error('No local private key');
@@ -560,34 +580,29 @@
             return aesKeyPromise;
         }
 
-        // ---------- SEND-LOGIC (überarbeitet + dedupe + clientId) ----------
+        // SEND-LOGIC
         async function sendMessage() {
             const text = (messageInput.value || '').trim();
             if (!text && !attachedFile) return;
 
             if (!currentContact) { if (!contacts.length) return alert('Kein Kontakt ausgewählt'); currentContact = contacts[0]; }
 
-            // Erstelle einen dedupe-key: conv|text|filename
             const sendKey = makeSendKey(currentConversationId, text, attachedFile);
             if (ongoingSends.has(sendKey)) {
-                // bereits im Senden; ignoriere diese erneute Anforderung
                 console.warn('Duplicate send suppressed for key', sendKey);
                 return;
             }
             ongoingSends.set(sendKey, true);
 
-            // generiere tempId / clientId frühzeitig
             const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
             try {
-                // ensure conversation exists
                 if (!currentConversationId) {
                     const resp = await api.createConversation([userId, currentContact.id]);
-                    if (!resp.ok) return alert('Konversation konnte nicht erstellt werden');
+                    if (!resp || !resp.ok) { ongoingSends.delete(sendKey); return alert('Konversation konnte nicht erstellt werden'); }
                     currentConversationId = resp.conversation.id;
                 }
 
-                // optimistic message object with temporary id
                 const optimisticMsg = {
                     senderId: userId,
                     text: text || (attachedFile ? '[Datei]' : ''),
@@ -596,10 +611,9 @@
                     _tempId: tempId
                 };
 
-                // show immediately (optimistic UI)
                 appendMessageToDOM(optimisticMsg);
 
-                // reset input quickly for snappy UX
+                // quick reset input
                 messageInput.value = '';
                 messageInput.placeholder = 'Nachricht ...';
                 messageInput.focus();
@@ -607,12 +621,7 @@
 
                 // prepare encryption
                 let aesKey = null;
-                try {
-                    aesKey = await getOrCreateAesKeyForPeer(currentContact.id);
-                } catch (e) {
-                    console.warn('getOrCreateAesKeyForPeer failed (continuing):', e);
-                    aesKey = null;
-                }
+                try { aesKey = await getOrCreateAesKeyForPeer(currentContact.id); } catch (e) { console.warn('getOrCreateAesKeyForPeer failed', e); aesKey = null; }
 
                 let textEncrypted = '';
                 let textIv = '';
@@ -620,11 +629,7 @@
                     try {
                         const enc = await E2EE.encryptWithKey(aesKey, text);
                         textEncrypted = enc.cipherB64; textIv = enc.ivB64;
-                    } catch (e) {
-                        console.warn('encryptWithKey failed', e);
-                        textEncrypted = '';
-                        textIv = '';
-                    }
+                    } catch (e) { console.warn('encryptWithKey failed', e); }
                 }
 
                 const attachments = [];
@@ -633,12 +638,9 @@
                         const ab = await attachedFile.arrayBuffer();
                         const enc = await E2EE.encryptBuffer(aesKey, ab);
                         attachments.push({ filename: attachedFile.name, mime: attachedFile.type || 'application/octet-stream', cipher: enc.cipherB64, iv: enc.ivB64 });
-                    } catch (e) {
-                        console.warn('encrypt attachment failed', e);
-                    }
+                    } catch (e) { console.warn('encrypt attachment failed', e); }
                 }
 
-                // payload now includes clientId so server can echo it back
                 const payload = {
                     clientId: tempId,
                     conversationId: currentConversationId,
@@ -649,40 +651,26 @@
                     attachments
                 };
 
-                // Primary: socket if connected
                 if (socket && socket.connected) {
                     socket.emit('send_message', payload, (ack) => {
-                        if (!ack) {
-                            console.error('no ack from server for send_message');
+                        if (!ack || ack.error) {
+                            console.error('send_message ack error', ack && ack.error);
                             markMessageFailed(tempId);
                             ongoingSends.delete(sendKey);
                             return;
                         }
-                        if (ack.error) {
-                            console.error('send_message ack error', ack.error);
-                            markMessageFailed(tempId);
-                            ongoingSends.delete(sendKey);
-                            return;
-                        }
-                        // server acked and will broadcast; also update optimistic element now
-                        try {
-                            updateTempMessageWithServer(tempId, ack.message);
-                        } catch (e) {
-                            console.warn('updateTempMessageWithServer failed', e);
-                        }
+                        try { updateTempMessageWithServer(tempId, ack.message); } catch (e) { console.warn('updateTempMessageWithServer failed', e); }
                         loadContacts().catch(() => { });
                         ongoingSends.delete(sendKey);
                     });
                 } else {
-                    // Fallback: use REST to persist message (socket offline)
                     try {
                         const resp = await api.postMessage(payload);
                         if (!resp || !resp.ok) {
-                            console.warn('postMessage fallback failed', resp && resp.error);
                             markMessageFailed(tempId);
                             ongoingSends.delete(sendKey);
                         } else {
-                            updateTempMessageWithServer(tempId, resp.message || resp.message || resp);
+                            updateTempMessageWithServer(tempId, resp.message || resp);
                             loadContacts().catch(() => { });
                             ongoingSends.delete(sendKey);
                         }
@@ -693,7 +681,6 @@
                     }
                 }
 
-                // reset attachment state
                 attachedFile = null;
                 fileInput.value = '';
             } catch (e) {
@@ -703,133 +690,115 @@
             }
         }
 
-        // mark message with tempId as failed
         function markMessageFailed(tempId) {
             const el = messagesContainer.querySelector(`[data-temp-id="${tempId}"]`);
             if (!el) return;
             el.classList.add('send-failed');
         }
 
-        // replace temp element with server info (or update it)
         function updateTempMessageWithServer(tempId, serverMsg) {
-            // try to find optimistic element
-            const el = messagesContainer.querySelector(`[data-temp-id="${tempId}"]`);
-            if (!el) {
-                // not found -> append server message (avoid duplicates: if data-msg-id exists, skip)
-                const existing = messagesContainer.querySelector(`[data-msg-id="${serverMsg.id}"]`);
-                if (existing) return;
+            const elTemp = messagesContainer.querySelector(`[data-temp-id="${tempId}"]`);
+            if (!elTemp) {
+                // append server message if not already present
+                if (!serverMsg || !serverMsg.id) return;
+                const exists = messagesContainer.querySelector(`[data-msg-id="${serverMsg.id}"]`);
+                if (exists) return;
                 const msg = { senderId: serverMsg.senderId, text: '(verschlüsselt)', attachments: serverMsg.attachments || [], ts: serverMsg.ts, _id: serverMsg.id };
                 renderMessages([msg], { autoScroll: true });
                 return;
             }
-            // set server id, remove temp marker
-            el.dataset.msgId = serverMsg.id;
-            delete el.dataset.tempId;
-            // update time
-            const timeEl = el.querySelector('.message-time');
+            elTemp.dataset.msgId = serverMsg.id || '';
+            delete elTemp.dataset.tempId;
+            const timeEl = elTemp.querySelector('.message-time');
             if (timeEl) timeEl.textContent = formatTime(serverMsg.ts);
-            el.classList.remove('send-failed');
+            elTemp.classList.remove('send-failed');
         }
 
         window.sendMessage = sendMessage;
         sendBtn && sendBtn.addEventListener('click', (e) => { e.preventDefault(); sendMessage(); });
         messageInput && messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
-        // socket incoming message handler (verbesserte Dupe-Erkennung)
-        socket.on('message', async (data) => {
-            try {
-                if (!data || !data.message) return;
-                const incoming = data.message;
-                const convId = data.conversationId;
+        // socket: incoming message handler
+        if (socket) {
+            socket.on('message', async (data) => {
+                try {
+                    if (!data || !data.message) return;
+                    const incoming = data.message;
+                    const convId = data.conversationId;
 
-                // Wenn Nachricht zur geöffneten Konversation gehört
-                if (currentConversationId && convId === currentConversationId) {
-                    const otherId = incoming.senderId === userId ? (currentContact && currentContact.id) || '' : incoming.senderId;
-                    let text = '';
-                    if (incoming.textEncrypted) {
-                        try {
-                            text = await tryDecryptMessage(incoming, otherId);
-                        } catch (e) {
-                            console.warn('decrypt on socket message failed', e);
-                            text = '(verschlüsselt)';
+                    // belongs to current conversation?
+                    if (currentConversationId && convId === currentConversationId) {
+                        const otherId = incoming.senderId === userId ? (currentContact && currentContact.id) || '' : incoming.senderId;
+                        let text = '';
+                        if (incoming.textEncrypted) {
+                            try { text = await tryDecryptMessage(incoming, otherId); } catch (e) { console.warn('decrypt on socket message failed', e); text = '(verschlüsselt)'; }
                         }
-                    }
 
-                    // --- DUPLICATE CHECK: if clientId matches an optimistic element, update it instead of appending ---
-                    const clientId = incoming.clientId || incoming.clientid || null;
-                    if (clientId) {
-                        const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
-                        if (tempEl) {
-                            // update existing optimistic element: set real id, update text/time
-                            tempEl.dataset.msgId = incoming.id || incoming._id || '';
-                            delete tempEl.dataset.tempId;
-                            const txtEl = tempEl.querySelector('.message-text');
-                            if (txtEl) txtEl.textContent = text || txtEl.textContent;
-                            const timeEl = tempEl.querySelector('.message-time');
-                            if (timeEl) timeEl.textContent = formatTime(incoming.ts || incoming.ts);
-                            // mark delivered
-                            tempEl.classList.remove('send-failed');
-                            try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
-                            loadContacts().catch(() => { });
-                            return;
+                        const clientId = incoming.clientId || incoming.clientid || null;
+                        if (clientId) {
+                            const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
+                            if (tempEl) {
+                                tempEl.dataset.msgId = incoming.id || '';
+                                delete tempEl.dataset.tempId;
+                                const txtEl = tempEl.querySelector('.message-text');
+                                if (txtEl) txtEl.textContent = text || txtEl.textContent;
+                                const timeEl = tempEl.querySelector('.message-time');
+                                if (timeEl) timeEl.textContent = formatTime(incoming.ts || incoming.ts);
+                                tempEl.classList.remove('send-failed');
+                                try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                                loadContacts().catch(() => { });
+                                return;
+                            }
                         }
+
+                        if (incoming.id) {
+                            const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
+                            if (exists) return;
+                        }
+
+                        const msgObj = { senderId: incoming.senderId, text: text || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
+                        appendMessageToDOM(msgObj);
+                        try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                        loadContacts().catch(() => { });
+                        return;
                     }
 
-                    // avoid adding duplicate by msg id if it already exists
-                    if (incoming.id) {
-                        const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
-                        if (exists) return;
-                    }
-
-                    // build message object similar to renderMessages expects
-                    const msgObj = {
-                        senderId: incoming.senderId,
-                        text: text || '',
-                        attachments: incoming.attachments || [],
-                        ts: incoming.ts || Date.now()
-                    };
-                    appendMessageToDOM(msgObj);
-                    try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
-                    loadContacts().catch(() => { });
-                    return;
+                    // otherwise refresh contacts (new messages)
+                    await loadContacts();
+                } catch (e) {
+                    console.error('socket message handler', e);
                 }
+            });
 
-                // otherwise update contacts
-                await loadContacts();
-            } catch (e) {
-                console.error('socket message handler', e);
-            }
-        });
+            socket.on('conversation_update', () => { loadContacts().catch(() => { }); });
+            socket.on('contacts_update', () => { loadContacts().catch(() => { }); });
+            socket.on('connect', () => { console.log('[socket] connected', socket.id); });
+            socket.on('disconnect', (reason) => { console.log('[socket] disconnected', reason); });
+            socket.on('connect_error', (err) => {
+                console.error('[socket] connect_error:', err && err.message ? err.message : err);
+                const msg = err && err.message ? err.message : 'Socket-Fehler';
+                switch (msg) {
+                    case 'AUTH_NO_TOKEN':
+                        alert('Socket-Verbindung fehlgeschlagen: Kein Login-Token vorhanden.');
+                        break;
+                    case 'AUTH_INVALID_TOKEN':
+                        alert('Socket-Verbindung fehlgeschlagen: Login abgelaufen oder ungültig.');
+                        localStorage.removeItem('user');
+                        window.location.href = '/chat/login/login.html';
+                        break;
+                    case 'AUTH_INTERNAL_ERROR':
+                        alert('Interner Serverfehler bei der Socket-Anmeldung.');
+                        break;
+                    default:
+                        // nur loggen, um nicht zu nerven
+                        console.warn('Socket-Fehler:', msg);
+                }
+            });
+        }
 
-        socket.on('conversation_update', (data) => { loadContacts().catch(() => { }); });
-        socket.on('contacts_update', (data) => { loadContacts().catch(() => { }); });
-        socket.on('connect', () => { console.log('[socket] connected', socket.id); });
-        socket.on('disconnect', (reason) => { console.log('[socket] disconnected', reason); });
-
-        socket.on('connect_error', (err) => {
-            console.error('[socket] connect_error:', err && err.message ? err.message : err);
-            const msg = err && err.message ? err.message : 'Socket-Fehler';
-            switch (msg) {
-                case 'AUTH_NO_TOKEN':
-                    alert('Socket-Verbindung fehlgeschlagen: Kein Login-Token vorhanden.');
-                    break;
-                case 'AUTH_INVALID_TOKEN':
-                    alert('Socket-Verbindung fehlgeschlagen: Login abgelaufen oder ungültig.');
-                    localStorage.removeItem('user');
-                    window.location.href = '/chat/login/login.html';
-                    break;
-                case 'AUTH_INTERNAL_ERROR':
-                    alert('Interner Serverfehler bei der Socket-Anmeldung.');
-                    break;
-                default:
-                    alert('Socket-Fehler: ' + msg);
-            }
-        });
-
-        // appendMessageToDOM - erweitert um tempId support (unverändert)
+        // appendMessageToDOM (unterstützt tempId)
         function appendMessageToDOM(m) {
             if (!messagesContainer) return;
-
             const container = el('div', 'message-container' + (m.senderId === userId ? ' my' : ''));
             if (m._tempId) container.dataset.tempId = m._tempId;
             if (m._id) container.dataset.msgId = m._id;
@@ -885,18 +854,15 @@
             }
 
             messagesContainer.appendChild(container);
-
-            requestAnimationFrame(() => {
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            });
-
+            requestAnimationFrame(() => { messagesContainer.scrollTop = messagesContainer.scrollHeight; });
             return container;
         }
 
+        // initial load
         await loadContacts();
         if (contacts.length) {
             const first = contactsContainer.querySelector('.contact');
             if (first) first.click();
         }
     });
-})();
+})(); 
