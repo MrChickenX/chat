@@ -78,11 +78,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // ensure keypair & upload (optional): call ensureKeyAndUpload(user.id) if you want synchronously
                     // Weiterleitung zum Chat
-                    window.location.href = '/chat.html';
+                    window.location.href = '/chat/index.html';
                 }
 
                 // Weiterleitung zum Chat
-                window.location.href = '/index.html';
+                window.location.href = '/chat/index.html';
             } else {
                 document.getElementById("error").innerHTML = "Login fehlgeschlagen: " + (data.error || 'ungueltig');
             }
