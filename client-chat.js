@@ -3,7 +3,6 @@
     const SOCKET_URL = window.__SOCKET_URL__ || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
     const SOCKET_IO_CDN = 'https://cdn.socket.io/4.7.1/socket.io.min.js';
 
-    // Lade socket.io client falls nötig
     function loadSocketIoClient() {
         return new Promise((resolve, reject) => {
             if (typeof io !== 'undefined') return resolve();
@@ -15,26 +14,38 @@
         });
     }
 
-    // Helper: API Fetch (nutzt API_BASE)
+    // ------------------------------------------------------------------
+    // API Fetch: robuste Fehlerbehandlung, gibt immer ein Objekt zurück
+    // { ok: boolean, status: number, body: any, error?: string }
+    // ------------------------------------------------------------------
     async function apiFetch(path, opts = {}) {
         const url = API_BASE ? `${API_BASE}${path}` : path;
-        const res = await fetch(url, {
-            ...opts,
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(opts.headers || {})
-            }
-        });
-        if (!res.ok) {
+        try {
+            const res = await fetch(url, {
+                ...opts,
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(opts.headers || {})
+                }
+            });
             const text = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status} ${text.slice(0, 200)}`);
+            let parsed = text;
+            const ct = res.headers.get('content-type') || '';
+            if (ct.includes('application/json')) {
+                try { parsed = JSON.parse(text); } catch (e) { parsed = text; }
+            }
+            if (!res.ok) {
+                return { ok: false, status: res.status, body: parsed, error: typeof parsed === 'string' ? parsed : (parsed && parsed.error) || 'HTTP error' };
+            }
+            return { ok: true, status: res.status, body: parsed };
+        } catch (err) {
+            // network error, CORS blocked, etc.
+            return { ok: false, status: 0, body: null, error: err && err.message ? err.message : 'Network error' };
         }
-        const ct = res.headers.get('content-type') || '';
-        return ct.includes('application/json') ? res.json() : res.text();
     }
 
-    // API convenience (nutzt apiFetch)
+    // API convenience (angepasst: wrapper gibt .ok/.body)
     const api = {
         getContacts: (userId) => apiFetch(`/contacts?userId=${encodeURIComponent(userId)}`),
         getConversation: (convId) => apiFetch(`/conversation/${encodeURIComponent(convId)}`),
@@ -76,7 +87,7 @@
         return d.toLocaleDateString();
     }
 
-    // E2EE helpers (wie von dir)
+    // E2EE helpers (wie von dir, unverändert)
     const E2EE = {
         async ensureKeypair(userId) {
             const storedPriv = localStorage.getItem('ecdh_jwk_' + userId);
@@ -195,7 +206,6 @@
 
         let socket = null;
         try {
-            // if io exists, connect
             if (typeof io !== 'undefined') {
                 socket = io(SOCKET_URL, socketOptions);
             } else {
@@ -214,8 +224,8 @@
         async function fillUserInfo() {
             try {
                 const me = await api.getUser(userId);
-                if (me && me.user) {
-                    const u = me.user;
+                if (me && me.ok && me.body && me.body.user) {
+                    const u = me.body.user;
                     ['#username-display', '.username-display', '[data-username]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.username || '')));
                     ['#nickname-display', '.nickname-display', '[data-nickname]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.nickname || u.username || '')));
                     ['#user-id', '[data-userid]'].forEach(sel => document.querySelectorAll(sel).forEach(el => el && (el.textContent = u.id || '')));
@@ -247,17 +257,17 @@
             try {
                 await E2EE.ensureKeypair(userId);
                 const resp = await api.addContact(userId, name.trim());
-                if (resp.ok) {
-                    const peerResp = await api.getUser(resp.contactId);
-                    if (peerResp.ok && peerResp.user && peerResp.user.publicKey) {
-                        alert('Kontakt hinzugefügt — PublicKey gefunden');
-                    } else {
-                        alert('Kontakt hinzugefügt — Peer hat noch keinen PublicKey');
-                    }
-                    await loadContacts();
-                } else {
-                    alert('Kontakt konnte nicht hinzugefügt werden: ' + (resp.error || 'Fehler'));
+                if (!resp || !resp.ok) {
+                    alert('Kontakt konnte nicht hinzugefügt werden: ' + (resp && resp.error ? resp.error : 'Fehler'));
+                    return;
                 }
+                const peerResp = await api.getUser(resp.body.contactId);
+                if (peerResp && peerResp.ok && peerResp.body && peerResp.body.user && peerResp.body.user.publicKey) {
+                    alert('Kontakt hinzugefügt — PublicKey gefunden');
+                } else {
+                    alert('Kontakt hinzugefügt — Peer hat noch keinen PublicKey');
+                }
+                await loadContacts();
             } catch (err) {
                 console.error('addContact error', err);
                 alert('Netzwerkfehler');
@@ -273,7 +283,7 @@
             if (attachedFile) messageInput.placeholder = 'Datei angehängt: ' + attachedFile.name; else messageInput.placeholder = 'Nachricht ...';
         });
 
-        // emoji
+        // emoji (unchanged)
         function createEmojiPicker() {
             const emojis = ['😀', '😁', '😂', '😉', '😊', '😍', '😎', '😢', '👍', '🙏', '🔥', '🎉', '❤️'];
             const box = el('div', 'emoji-picker');
@@ -319,7 +329,7 @@
             const wrapper = el('div');
 
             const nameAnchor = el('a', 'contact-name');
-            nameAnchor.id = 'contact-name';
+            // don't set duplicate static IDs; keep unique id via root.id
             nameAnchor.textContent = c.nickname || c.username || c.id;
             wrapper.appendChild(nameAnchor);
 
@@ -329,12 +339,10 @@
             wrapper.appendChild(timeAnchor);
 
             const activity = el('a', 'contact-activity');
-            activity.id = 'contact-activity';
             activity.textContent = c.preview || '';
             wrapper.appendChild(activity);
 
             const unread = el('a', 'new-msg-count');
-            unread.id = 'new-msg-count';
             if (c.unread && c.unread > 0) {
                 unread.classList.add('new');
                 unread.textContent = String(c.unread);
@@ -358,17 +366,19 @@
             return root;
         }
 
-        // decryption helper (uses direct derive each time to be safe)
+        // tryDecryptMessage: nutzt cryptoCache / getOrCreateAesKeyForPeer, nur falls nötig ruft api.getUser
         async function tryDecryptMessage(msg, otherId) {
             if (!msg || !msg.textEncrypted) return '';
             try {
-                const userResp = await api.getUser(otherId);
-                if (!userResp || !userResp.user || !userResp.user.publicKey) return '(verschlüsselt)';
-                const theirPub = await E2EE.importPeerPublicKey(userResp.user.publicKey);
-                const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
-                if (!myJwk) return '(verschlüsselt)';
-                const myPriv = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-                const aes = await E2EE.deriveAESKey(myPriv, theirPub);
+                // Fast path: if we already cached AES key for peer, use it
+                if (cryptoCache.has(otherId) && cryptoCache.get(otherId).aesKey) {
+                    const aesKey = cryptoCache.get(otherId).aesKey;
+                    const dec = await E2EE.decryptWithKey(aesKey, msg.textEncrypted, msg.iv || msg.ivB64);
+                    return dec || '(verschlüsselt)';
+                }
+                // Otherwise attempt to create AES key (this will call api.getUser once internally)
+                const aes = await getOrCreateAesKeyForPeer(otherId);
+                if (!aes) return '(verschlüsselt)';
                 const dec = await E2EE.decryptWithKey(aes, msg.textEncrypted, msg.iv || msg.ivB64);
                 return dec || '(verschlüsselt)';
             } catch (e) {
@@ -377,26 +387,31 @@
             }
         }
 
+        // -------------------------------------------------------
+        // loadContacts: reduziert API-Aufrufe: nutzt lastMessageMeta
+        // -------------------------------------------------------
         async function loadContacts() {
             try {
                 const resp = await api.getContacts(userId);
-                if (!resp || !resp.ok) return;
-                const arr = resp.contacts || [];
+                if (!resp || !resp.ok) {
+                    console.warn('getContacts failed', resp && resp.error);
+                    return;
+                }
+                const arr = (resp.body && resp.body.contacts) ? resp.body.contacts : [];
                 const enriched = [];
                 for (const c of arr) {
                     let preview = '';
                     let lastMessageStr = '';
-                    if (c.conversationId) {
-                        const convResp = await api.getConversation(c.conversationId);
-                        if (convResp && convResp.ok) {
-                            const conv = convResp.conversation;
-                            const last = conv.messages && conv.messages.length ? conv.messages[conv.messages.length - 1] : null;
-                            if (last) {
-                                const otherId = last.senderId === userId ? (conv.members.find(x => x !== userId) || '') : last.senderId;
-                                const dec = await tryDecryptMessage(last, otherId);
-                                preview = dec ? ((last.senderId === userId ? 'Du: ' : '') + dec) : '(verschlüsselt)';
-                                lastMessageStr = formatTime(last.ts);
-                            }
+                    // Use lastMessageMeta provided by server to avoid a separate /conversation call
+                    if (c.lastMessageMeta) {
+                        const last = c.lastMessageMeta;
+                        // avoid decrypting every contact (would be many API calls) -> show generic placeholder
+                        if (last.textEncrypted) {
+                            preview = '(verschlüsselt)'; // keep lightweight
+                            lastMessageStr = formatTime(last.ts);
+                        } else {
+                            preview = last.textEncrypted || '';
+                            lastMessageStr = formatTime(last.ts);
                         }
                     }
                     enriched.push({ ...c, preview, lastMessageStr, nickname: c.nickname || c.username });
@@ -411,29 +426,60 @@
             }
         }
 
+        // getOrCreateAesKeyForPeer: wie vorher, cached aesKey + theirPubB64
+        async function getOrCreateAesKeyForPeer(peerId) {
+            try {
+                if (cryptoCache.has(peerId)) {
+                    const entry = cryptoCache.get(peerId);
+                    const userResp = await api.getUser(peerId);
+                    if (userResp && userResp.ok && userResp.body && userResp.body.user) {
+                        const theirPubB64 = userResp.body.user.publicKey || '';
+                        if (entry.theirPubB64 === theirPubB64 && entry.aesKey) return entry.aesKey;
+                    } else {
+                        // if api.getUser fails, still return cached aesKey if present
+                        if (entry.aesKey) return entry.aesKey;
+                    }
+                }
+                const userResp = await api.getUser(peerId);
+                if (!userResp || !userResp.ok || !userResp.body || !userResp.body.user || !userResp.body.user.publicKey) {
+                    return null; // peer has no publicKey or call failed
+                }
+                const theirPubB64 = userResp.body.user.publicKey;
+                const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
+                if (!myJwk) throw new Error('No local private key');
+                const myPrivKey = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+                const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
+                const aesKey = await E2EE.deriveAESKey(myPrivKey, theirPubKey);
+                const entry = { theirPubB64, aesKey };
+                cryptoCache.set(peerId, entry);
+                return aesKey;
+            } catch (e) {
+                console.warn('getOrCreateAesKeyForPeer error', e);
+                return null;
+            }
+        }
+
+        // openConversation: holt AES-Key einmal, entschlüsselt lokal alle Nachrichten
         async function openConversation(contact) {
             try {
                 currentContact = contact;
                 if (headerName) headerName.textContent = contact.nickname || contact.username || contact.id;
                 if (headerStatus) headerStatus.textContent = 'Online';
 
-                // try precompute AES key for this contact (so next send can be encrypted)
-                (async () => {
-                    try {
-                        const k = await getOrCreateAesKeyForPeer(contact.id);
-                        if (k) {
-                            // update lock badge in UI if present
-                            const lockEl = document.querySelector(`#contact-${contact.id} .contact-lock`);
-                            if (lockEl) lockEl.textContent = '🔒';
-                        }
-                    } catch (e) { /* ignore */ }
-                })();
+                // Try to precompute AES key (useful for decrypting many messages)
+                try {
+                    const k = await getOrCreateAesKeyForPeer(contact.id);
+                    if (k) {
+                        const lockEl = document.querySelector(`#contact-${contact.id} .contact-lock`);
+                        if (lockEl) lockEl.textContent = '🔒';
+                    }
+                } catch (e) { /* ignore */ }
 
                 let convId = contact.conversationId;
                 if (!convId) {
-                    const convs = await api.getConversationsForUser(userId);
-                    if (convs && convs.ok) {
-                        const found = (convs.conversations || []).find(c => (c.members || []).includes(contact.id));
+                    const convsResp = await api.getConversationsForUser(userId);
+                    if (convsResp && convsResp.ok && convsResp.body && convsResp.body.conversations) {
+                        const found = (convsResp.body.conversations || []).find(c => (c.members || []).includes(contact.id));
                         if (found) convId = found.id;
                     }
                 }
@@ -449,8 +495,11 @@
                 }
 
                 const resp = await api.getConversation(convId);
-                if (!resp || !resp.ok) { if (messagesContainer) messagesContainer.innerHTML = ''; return; }
-                const conv = resp.conversation;
+                if (!resp || !resp.ok || !resp.body || !resp.body.conversation) { if (messagesContainer) messagesContainer.innerHTML = ''; return; }
+                const conv = resp.body.conversation;
+
+                // get AES key once for this peer (if possible)
+                const aesKey = await getOrCreateAesKeyForPeer(contact.id);
 
                 const msgs = [];
                 for (const m of conv.messages || []) {
@@ -460,14 +509,19 @@
                         // server flagged as unencrypted -> show plaintext
                         text = m.textEncrypted || '';
                     } else if (m.textEncrypted) {
-                        const dec = await tryDecryptMessage(m, otherId);
-                        text = dec || '(konnte nicht entschlüsselt werden)';
+                        if (aesKey) {
+                            const dec = await E2EE.decryptWithKey(aesKey, m.textEncrypted, m.iv || m.ivB64);
+                            text = dec || '(konnte nicht entschlüsselt werden)';
+                        } else {
+                            // No AES key -> show placeholder to avoid extra network calls
+                            text = '(verschlüsselt)';
+                        }
                     }
                     msgs.push({ ...m, text });
                 }
 
                 renderMessages(msgs.map(mm => ({ senderId: mm.senderId, text: mm.text, attachments: mm.attachments || [], ts: mm.ts, _id: mm.id })), { autoScroll: true });
-                await api.markRead(convId, userId).catch(() => { });
+                await api.markRead(convId, userId);
                 await loadContacts();
             } catch (e) {
                 console.error('openConversation error', e);
@@ -553,8 +607,8 @@
             try {
                 const otherId = messageObj.senderId === userId ? (currentContact && currentContact.id) : messageObj.senderId;
                 const uresp = await api.getUser(otherId);
-                if (!uresp || !uresp.user) return alert('Konnte Absender nicht finden');
-                const theirPubB64 = uresp.user.publicKey;
+                if (!uresp || !uresp.ok || !uresp.body || !uresp.body.user) return alert('Konnte Absender nicht finden');
+                const theirPubB64 = uresp.body.user.publicKey;
                 if (!theirPubB64) return alert('Kein PublicKey');
                 const theirPub = await E2EE.importPeerPublicKey(theirPubB64);
                 const myPriv = await crypto.subtle.importKey('jwk', JSON.parse(localStorage.getItem('ecdh_jwk_' + userId)), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
@@ -571,37 +625,9 @@
             }
         }
 
-        // NEW: getOrCreateAesKeyForPeer returns a CryptoKey or null (does not throw if peer has no key)
-        async function getOrCreateAesKeyForPeer(peerId) {
-            try {
-                if (cryptoCache.has(peerId)) {
-                    const entry = cryptoCache.get(peerId);
-                    const userResp = await api.getUser(peerId);
-                    const theirPubB64 = userResp && userResp.user ? (userResp.user.publicKey || '') : '';
-                    if (entry.theirPubB64 === theirPubB64 && entry.aesKey) return entry.aesKey;
-                }
-                const userResp = await api.getUser(peerId);
-                if (!userResp || !userResp.user || !userResp.user.publicKey) {
-                    return null; // peer has no publicKey
-                }
-                const theirPubB64 = userResp.user.publicKey;
-                const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
-                if (!myJwk) throw new Error('No local private key');
-                const myPrivKey = await crypto.subtle.importKey('jwk', JSON.parse(myJwk), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-                const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
-                const aesKey = await E2EE.deriveAESKey(myPrivKey, theirPubKey);
-                const entry = { theirPubB64, aesKey };
-                cryptoCache.set(peerId, entry);
-                return aesKey;
-            } catch (e) {
-                console.warn('getOrCreateAesKeyForPeer error', e);
-                return null;
-            }
-        }
-
         const lastSendTimes = new Map();
 
-        // SEND-LOGIC (sends unencrypted text if no peer key available; attachments only if encrypted)
+        // SEND-LOGIC (wie zuvor, nur kleine Robustheitsanpassungen)
         async function sendMessage() {
             const text = (messageInput.value || '').trim();
             if (!text && !attachedFile) return;
@@ -610,24 +636,19 @@
 
             const sendKey = makeSendKey(currentConversationId, text, attachedFile);
 
-            // 1) Wenn bereits ein In-Flight-Send mit exakt diesem Key existiert, blockiere (keine Doppel-Acks)
             if (ongoingSends.has(sendKey)) {
                 console.warn('Duplicate send suppressed for key (ongoing):', sendKey);
                 return;
             }
 
-            // 2) Kurzes Zeitfenster blockieren (z.B. versehentliche Doppel-Klicks)
             const nowTs = Date.now();
             const lastTs = lastSendTimes.get(sendKey) || 0;
-            const MIN_REPEAT_MS = 800; // wenn gleiche Nachricht innerhalb 800ms: unterdrücken
+            const MIN_REPEAT_MS = 800;
             if (nowTs - lastTs < MIN_REPEAT_MS) {
                 console.warn('Duplicate send suppressed for key (time-window):', sendKey);
                 return;
             }
-            // record send time
             lastSendTimes.set(sendKey, nowTs);
-
-            // Markiere als in-flight
             ongoingSends.set(sendKey, true);
 
             const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -636,7 +657,7 @@
                 if (!currentConversationId) {
                     const resp = await api.createConversation([userId, currentContact.id]);
                     if (!resp || !resp.ok) { ongoingSends.delete(sendKey); return alert('Konversation konnte nicht erstellt werden'); }
-                    currentConversationId = resp.conversation.id;
+                    currentConversationId = resp.body.conversation.id;
                 }
 
                 const optimisticMsg = {
@@ -649,7 +670,6 @@
 
                 appendMessageToDOM(optimisticMsg);
 
-                // quick reset input
                 messageInput.value = '';
                 messageInput.placeholder = 'Nachricht ...';
                 messageInput.focus();
@@ -669,7 +689,7 @@
                         textEncrypted = enc.cipherB64; textIv = enc.ivB64;
                     } catch (e) { console.warn('encryptWithKey failed', e); textEncrypted = text; unencryptedFlag = true; }
                 } else if (text && !aesKey) {
-                    // Peer has no key -> send plaintext (server will mark unencrypted)
+                    // Peer has no key -> send plaintext (server will store it)
                     textEncrypted = text;
                     unencryptedFlag = true;
                 }
@@ -682,7 +702,6 @@
                         attachments.push({ filename: attachedFile.name, mime: attachedFile.type || 'application/octet-stream', cipher: enc.cipherB64, iv: enc.ivB64 });
                     } catch (e) { console.warn('encrypt attachment failed', e); }
                 } else if (attachedFile && !aesKey) {
-                    // do not send attachments unencrypted
                     console.warn('Attachment nicht gesendet: Peer hat keinen PublicKey (Attachments werden nicht unverschlüsselt gesendet)');
                 }
 
@@ -716,7 +735,7 @@
                             markMessageFailed(tempId);
                             ongoingSends.delete(sendKey);
                         } else {
-                            updateTempMessageWithServer(tempId, resp.message || resp);
+                            updateTempMessageWithServer(tempId, resp.body.message || resp.body);
                             loadContacts().catch(() => { });
                             ongoingSends.delete(sendKey);
                         }
@@ -765,7 +784,9 @@
         sendBtn && sendBtn.addEventListener('click', (e) => { e.preventDefault(); sendMessage(); });
         messageInput && messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
-        // socket: incoming message handler (handles unencrypted)
+        // ------------------------
+        // socket: incoming message
+        // ------------------------
         if (socket) {
             socket.on('message', async (data) => {
                 try {
@@ -775,7 +796,7 @@
 
                     // belongs to current conversation?
                     if (currentConversationId && convId === currentConversationId) {
-                        // if unencrypted, show directly
+                        // If server used an "unencrypted" flag (might be absent), handle it
                         if (incoming.unencrypted) {
                             const clientId = incoming.clientId || incoming.clientid || null;
                             if (clientId) {
@@ -788,7 +809,7 @@
                                     const timeEl = tempEl.querySelector('.message-time');
                                     if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
                                     tempEl.classList.remove('send-failed');
-                                    try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                                    try { api.markRead(currentConversationId, userId); } catch (e) { }
                                     loadContacts().catch(() => { });
                                     return;
                                 }
@@ -799,16 +820,27 @@
                             }
                             const msgObj = { senderId: incoming.senderId, text: incoming.textEncrypted || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
                             appendMessageToDOM(msgObj);
-                            try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                            try { api.markRead(currentConversationId, userId); } catch (e) { }
                             loadContacts().catch(() => { });
                             return;
                         }
 
-                        // else: encrypted flow
+                        // encrypted flow: try to obtain AES key once and decrypt
                         const otherId = incoming.senderId === userId ? (currentContact && currentContact.id) || '' : incoming.senderId;
                         let text = '';
                         if (incoming.textEncrypted) {
-                            try { text = await tryDecryptMessage(incoming, otherId); } catch (e) { console.warn('decrypt on socket message failed', e); text = '(verschlüsselt)'; }
+                            try {
+                                const aesKey = await getOrCreateAesKeyForPeer(otherId);
+                                if (aesKey) {
+                                    const dec = await E2EE.decryptWithKey(aesKey, incoming.textEncrypted, incoming.iv || incoming.ivB64);
+                                    text = dec || '(verschlüsselt)';
+                                } else {
+                                    text = '(verschlüsselt)';
+                                }
+                            } catch (e) {
+                                console.warn('decrypt on socket message failed', e);
+                                text = '(verschlüsselt)';
+                            }
                         }
 
                         const clientId = incoming.clientId || incoming.clientid || null;
@@ -822,7 +854,7 @@
                                 const timeEl = tempEl.querySelector('.message-time');
                                 if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
                                 tempEl.classList.remove('send-failed');
-                                try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                                try { api.markRead(currentConversationId, userId); } catch (e) { }
                                 loadContacts().catch(() => { });
                                 return;
                             }
@@ -835,7 +867,7 @@
 
                         const msgObj = { senderId: incoming.senderId, text: text || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
                         appendMessageToDOM(msgObj);
-                        try { api.markRead(currentConversationId, userId).catch(() => { }); } catch (e) { }
+                        try { api.markRead(currentConversationId, userId); } catch (e) { }
                         loadContacts().catch(() => { });
                         return;
                     }
@@ -847,7 +879,6 @@
                 }
             });
 
-            // when contacts update (e.g. someone uploaded publicKey), reload contacts and precompute AES for current contact
             socket.on('contacts_update', async (data) => {
                 try {
                     await loadContacts();
