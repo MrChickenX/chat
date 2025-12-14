@@ -554,8 +554,9 @@
 
                 const msgs = [];
                 for (const m of conv.messages || []) {
+                    let text = '';
                     if (m.unencrypted) { text = m.textEncrypted || ''; }
-                    else if (m.textEncrypted) {
+                    else if (m.textEncrypted && m.iv) {
                         if (aesKey) {
                             const iv = m.iv || m.ivB64;
                             const dec = await E2EE.decryptWithKey(aesKey, m.textEncrypted, iv);
@@ -563,6 +564,8 @@
                         } else {
                             text = '(verschlüsselt)';
                         }
+                    } else {
+                        text = m.textEncrypted || '';
                     }
                     msgs.push({ ...m, text });
                 }
