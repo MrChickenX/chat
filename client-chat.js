@@ -84,7 +84,7 @@
         return d.toLocaleDateString();
     }
 
-    // E2EE helpers
+    // E2EE helpers (unchanged logic)
     const E2EE = {
         async ensureKeypair(userId) {
             const storedPriv = localStorage.getItem('ecdh_jwk_' + userId);
@@ -168,9 +168,8 @@
 
         // send dedupe map
         const ongoingSends = new Map();
-        // sendLock: prevent immediate duplicate send calls for same key (very short timeout)
         const sendLock = new Set();
-        let sendCooldown = false; // for keyboard/button disabling
+        let sendCooldown = false;
         function makeSendKey(convId, text, file) {
             const t = String(text || '').trim();
             const fname = file && file.name ? file.name : '';
@@ -368,21 +367,58 @@
             return root;
         }
 
-        // tryDecryptMessage: uses cached AES key
-        async function tryDecryptMessage(msg, otherId) {
-            if (!msg || !msg.textEncrypted) return '';
+        // tryDecryptMessage: uses cached AES key - accepts message object and optional otherId override
+        async function tryDecryptMessage(msg, otherIdOverride) {
+            if (!msg) return null;
+            const cipher = msg.textEncrypted || msg.cipher || msg.cipherB64 || msg.cipherText;
+            const iv = msg.iv || msg.ivB64 || msg.ivBase64;
+            if (!cipher || !iv) return null;
+
+            const otherId = otherIdOverride || ((msg.senderId === userId) ? (currentContact && currentContact.id) : msg.senderId);
+            if (!otherId) return null;
+
+            const aesKey = await getOrCreateAesKeyForPeer(otherId);
+            if (!aesKey) return null;
+
             try {
-                const aesKey = await getOrCreateAesKeyForPeer(otherId);
-                if (!aesKey) return '(verschlüsselt)';
-                const cipher = msg.textEncrypted || msg.cipher || msg.cipherB64;
-                const iv = msg.iv || msg.ivB64;
-                if (!cipher || !iv) return '(verschlüsselt)';
                 const dec = await E2EE.decryptWithKey(aesKey, cipher, iv);
-                return dec || '(verschlüsselt)';
+                return dec;
             } catch (e) {
                 console.warn('tryDecryptMessage failed', e);
-                return '(verschlüsselt)';
+                return null;
             }
+        }
+
+        // -------------------------------
+        // Conversation cache helpers
+        // -------------------------------
+        function getCachedConversation(convId) {
+            if (!convId) return null;
+            try {
+                const raw = localStorage.getItem('conv_cache_' + convId);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) { return null; }
+        }
+        function saveCachedConversation(conv) {
+            if (!conv || !conv.id) return;
+            // Keep only essential fields to avoid big storage
+            const payload = {
+                id: conv.id,
+                members: conv.members || [],
+                messages: (conv.messages || []).slice(-1000) // keep last 1000
+            };
+            try { localStorage.setItem('conv_cache_' + conv.id, JSON.stringify(payload)); } catch (e) { console.warn('saveCachedConversation failed', e); }
+        }
+        function appendMessageToConversationCache(convId, message) {
+            if (!convId || !message) return;
+            try {
+                const cached = getCachedConversation(convId) || { id: convId, members: [], messages: [] };
+                cached.messages = cached.messages || [];
+                cached.messages.push(message);
+                // cap to last 1000
+                if (cached.messages.length > 1000) cached.messages = cached.messages.slice(-1000);
+                saveCachedConversation(cached);
+            } catch (e) { console.warn('appendMessageToConversationCache failed', e); }
         }
 
         // loadContacts: use lastMessageMeta to reduce calls
@@ -391,6 +427,7 @@
                 const resp = await api.getContacts(userId);
                 if (!resp || !resp.ok) {
                     console.warn('getContacts failed', resp && resp.error);
+                    // If contacts unavailable, try to at least show cached contacts (not implemented here)
                     return;
                 }
                 const arr = (resp.body && resp.body.contacts) ? resp.body.contacts : [];
@@ -406,7 +443,7 @@
                         lastMessageStr = formatTime(last.ts);
 
                         // Heuristik: fehlt iv => vermutlich unverschluesselt/plaintext
-                        const ivPresent = !!(last.iv);
+                        const ivPresent = !!(last.iv || last.ivB64);
 
                         if (!ivPresent) {
                             // Plaintext direkt anzeigen (Server speichert text im Feld textEncrypted)
@@ -421,21 +458,18 @@
                                     if (convResp && convResp.ok && convResp.body && convResp.body.conversation) {
                                         const conv = convResp.body.conversation;
                                         const msgs = conv.messages || [];
-                                        // Gehe Rueckwaerts durch die letzten Nachrichten (grosseres conv koennte teuer sein)
                                         const maxCheck = 99;
                                         for (let i = msgs.length - 1; i >= 0 && i >= msgs.length - maxCheck; i--) {
                                             const m = msgs[i];
-                                            // Falls Server eine unencrypted-Flag setzt -> sofort verwenden
                                             if (m.unencrypted) {
                                                 const txt = m.textEncrypted || '';
                                                 preview = (m.senderId === userId ? 'Du: ' : '') + txt;
                                                 break;
                                             }
-                                            // Versuch zu entschluesseln (wenn AES-Key verfuegbar)
                                             if (m.textEncrypted) {
                                                 const otherId = (m.senderId === userId) ? (conv.members.find(x => x !== userId) || '') : m.senderId;
                                                 const dec = await tryDecryptMessage(m, otherId);
-                                                if (dec && dec !== '(verschlüsselt)') {
+                                                if (dec) {
                                                     preview = (m.senderId === userId ? 'Du: ' : '') + dec;
                                                     break;
                                                 }
@@ -446,7 +480,6 @@
                                     console.warn('Failed to fetch/scan conversation for preview', e);
                                 }
                             }
-                            // Wenn wir bis hierhin keine unverschluesselte/entschluesselte Nachricht fanden:
                             if (!preview) preview = '(verschlüsselt)';
                         }
                     }
@@ -473,24 +506,20 @@
                 if (cryptoCache.has(peerId)) {
                     const existing = cryptoCache.get(peerId);
                     if (existing && existing.aesKey) return existing.aesKey;
-                    // else we will try to refresh below
                 }
 
                 // fetch user's public key once
                 const userResp = await api.getUser(peerId);
                 if (!userResp || !userResp.ok || !userResp.body || !userResp.body.user || !userResp.body.user.publicKey) {
-                    // no public key available for peer
                     return null;
                 }
                 const theirPubB64 = userResp.body.user.publicKey;
 
-                // if we already cached a matching public key but no aesKey, attempt to derive again
                 const cached = cryptoCache.get(peerId);
                 if (cached && cached.theirPubB64 === theirPubB64 && cached.aesKey) {
                     return cached.aesKey;
                 }
 
-                // load local private JWK
                 const myJwk = localStorage.getItem('ecdh_jwk_' + userId);
                 if (!myJwk) throw new Error('No local private key');
 
@@ -502,13 +531,10 @@
                     ['deriveBits']
                 );
 
-                // import peer's raw public key
                 const theirPubKey = await E2EE.importPeerPublicKey(theirPubB64);
 
-                // derive AES key (this is the important fix: derive instead of recursive call)
                 const aesKey = await E2EE.deriveAESKey(myPrivKey, theirPubKey);
 
-                // cache and return
                 cryptoCache.set(peerId, { theirPubB64, aesKey });
                 return aesKey;
             } catch (e) {
@@ -517,94 +543,88 @@
             }
         }
 
-        async function openConversation(contact) {
-            try {
-                currentContact = contact;
-                if (headerName) headerName.textContent = contact.nickname || contact.username || contact.id;
-                if (headerStatus) headerStatus.textContent = 'Online';
-
-                try {
-                    const k = await getOrCreateAesKeyForPeer(contact.id);
-                    if (k) {
-                        const lockEl = document.querySelector(`#contact-${contact.id} .contact-lock`);
-                        if (lockEl) lockEl.textContent = '🔒';
-                    }
-                } catch (e) { /* ignore */ }
-
-                let convId = contact.conversationId;
-                if (!convId) {
-                    const convsResp = await api.getConversationsForUser(userId);
-                    if (convsResp && convsResp.ok && convsResp.body && convsResp.body.conversations) {
-                        const found = (convsResp.body.conversations || []).find(c => (c.members || []).includes(contact.id));
-                        if (found) convId = found.id;
-                    }
-                }
-                if (!convId) {
-                    currentConversationId = null;
-                    if (messagesContainer) messagesContainer.innerHTML = '';
-                    return;
-                }
-                currentConversationId = convId;
-
-                if (socket && socket.connected) socket.emit('join_conv', currentConversationId, () => { });
-
-                const resp = await api.getConversation(convId);
-                if (!resp || !resp.ok || !resp.body || !resp.body.conversation) { if (messagesContainer) messagesContainer.innerHTML = ''; return; }
-                const conv = resp.body.conversation;
-
-                // get AES key once for this peer (if possible)
-                const aesKey = await getOrCreateAesKeyForPeer(contact.id);
-
-                const msgs = [];
-                for (const m of conv.messages || []) {
-                    let text = '';
-                    if (m.unencrypted) { text = m.textEncrypted || ''; }
-                    else if (m.textEncrypted && m.iv) {
-                        if (aesKey) {
-                            const iv = m.iv || m.ivB64;
-                            const dec = await E2EE.decryptWithKey(aesKey, m.textEncrypted, iv);
-                            text = dec || '(konnte nicht entschlüsselt werden)';
-                        } else {
-                            text = '(verschlüsselt)';
-                        }
-                    } else {
-                        text = m.textEncrypted || '';
-                    }
-                    msgs.push({ ...m, text });
-                }
-
-                renderMessages(msgs.map(mm => ({ senderId: mm.senderId, text: mm.text, attachments: mm.attachments || [], ts: mm.ts, _id: mm.id })), { autoScroll: true });
-                await api.markRead(convId, userId);
-                await loadContacts();
-            } catch (e) {
-                console.error('openConversation error', e);
-            }
-        }
-
-        function renderMessages(msgs, opts = { autoScroll: false }) {
+        // Render messages: decrypt first, then render (prevents double-appending)
+        async function renderMessages(rawMsgs, opts = { autoScroll: false }) {
             if (!messagesContainer) return;
             messagesContainer.innerHTML = '';
-            const frag = document.createDocumentFragment();
 
-            msgs.forEach(async (m) => {
+            // Ensure rawMsgs is array
+            const msgsArr = Array.isArray(rawMsgs) ? rawMsgs : [];
+
+            // Prepare decrypted text for all messages concurrently
+            const prepared = await Promise.all(msgsArr.map(async (m) => {
+                const msg = Object.assign({}, m); // shallow copy
+                // determine cipher/iv presence
+                const cipher = msg.textEncrypted || msg.cipher || msg.cipherB64 || null;
+                const iv = msg.iv || msg.ivB64 || null;
+
+                // If server already provided plaintext in text field (unencrypted flag), use it
+                if (msg.unencrypted && (msg.textEncrypted || msg.text)) {
+                    msg._displayText = msg.textEncrypted || msg.text || '';
+                    return msg;
+                }
+
+                // If msg has plain text field already, prefer it
+                if (msg.text && !cipher && !iv) {
+                    msg._displayText = msg.text;
+                    return msg;
+                }
+
+                // Try to decrypt if there's cipher/iv
+                if (cipher && iv) {
+                    const otherId = (msg.senderId === userId) ? (currentContact && currentContact.id) || (msg.otherId || '') : msg.senderId;
+                    let dec = null;
+                    try {
+                        dec = await tryDecryptMessage(msg, otherId);
+                    } catch (e) { dec = null; }
+                    if (dec) msg._displayText = dec;
+                    else msg._displayText = '(verschlüsselt)';
+                } else {
+                    // nothing to show
+                    msg._displayText = msg.text || '';
+                }
+                return msg;
+            }));
+
+            // build DOM fragment
+            const frag = document.createDocumentFragment();
+            for (const m of prepared) {
                 const container = el('div', 'message-container' + (m.senderId === userId ? ' my' : ''));
-                if (m._id) container.dataset.msgId = m._id;
-                if (m._tempId) container.dataset.tempId = m._tempId;
+                if (m._id) container.setAttribute('data-msg-id', m._id);
+                if (m._tempId) container.setAttribute('data-temp-id', m._tempId);
 
                 const avatarImg = el('img', 'message-avatar');
                 avatarImg.src = '/chat/sources/avatars/avatar.png';
                 const box = el('div', 'message-box' + (m.senderId === userId ? ' my' : ''));
 
-                // Decrypt message text if encrypted
-                let displayText = m.text;
-                if (!displayText || displayText === '(verschlüsselt)') {
-                    const otherId = m.senderId === userId ? (currentContact && currentContact.id) : m.senderId;
-                    displayText = await tryDecryptMessage(m, otherId);
+                // attachments
+                if (m.attachments && m.attachments.length) {
+                    m.attachments.forEach(att => {
+                        const mf = el('div', 'message-file');
+                        const fi = el('img', 'file-icon');
+                        fi.src = (typeof getIconForFilename === 'function') ? getIconForFilename(att.filename) : '/chat/sources/icons/other.png';
+                        fi.alt = att.filename || 'file';
+                        fi.style.width = '28px'; fi.style.height = '28px'; fi.style.verticalAlign = 'middle';
+
+                        const fp = el('div', 'file-property');
+                        const name = el('a', 'file-name'); name.textContent = att.filename || 'file';
+                        const btn = el('button', 'file-download'); btn.textContent = 'Download';
+                        btn.addEventListener('click', () => downloadAttachment(m, att));
+
+                        fp.appendChild(name);
+                        fp.appendChild(document.createElement('br'));
+                        fp.appendChild(btn);
+
+                        mf.appendChild(fi);
+                        mf.appendChild(fp);
+                        box.appendChild(mf);
+                    });
                 }
 
-                if (displayText && String(displayText).trim().length) {
+                // text
+                if (m._displayText && String(m._displayText).trim().length) {
                     const textNode = el('div', 'message-text');
-                    textNode.textContent = displayText;
+                    textNode.textContent = m._displayText;
                     if (m.attachments && m.attachments.length) textNode.style.marginTop = '6px';
                     box.appendChild(textNode);
                 }
@@ -612,13 +632,6 @@
                 const time = el('a', 'message-time');
                 time.textContent = formatTime(m.ts);
                 time.style.display = 'block';
-                // Automatically decrypt incoming messages when received
-                const decryptedText = await tryDecryptMessage(m, m.senderId);
-                if (decryptedText) {
-                    const textNode = el('div', 'message-text');
-                    textNode.textContent = decryptedText;
-                    box.appendChild(textNode);
-                }
                 time.style.marginTop = '6px';
                 time.style.fontSize = '11px';
                 time.style.color = '#666';
@@ -633,10 +646,11 @@
                 }
 
                 frag.appendChild(container);
-            });
+            }
 
             messagesContainer.appendChild(frag);
 
+            // auto-scroll logic
             const threshold = 80;
             const nearBottom = (messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight) < threshold;
 
@@ -652,7 +666,10 @@
                 const otherId = messageObj.senderId === userId ? (currentContact && currentContact.id) : messageObj.senderId;
                 const aesKey = await getOrCreateAesKeyForPeer(otherId);
                 if (!aesKey) return alert('Kein AES-Key zum Entschlüsseln verfügbar');
-                const ab = await E2EE.decryptBuffer(aesKey, att.cipher || att.cipherB64 || att.cipherB64, att.iv || att.ivB64 || att.ivB64);
+                const cipher = att.cipher || att.cipherB64 || att.cipherText;
+                const iv = att.iv || att.ivB64 || att.ivBase64;
+                if (!cipher || !iv) return alert('Keine korrekten Dateidaten vorhanden');
+                const ab = await E2EE.decryptBuffer(aesKey, cipher, iv);
                 if (!ab) return alert('Datei konnte nicht entschlüsselt werden');
                 const blob = new Blob([ab], { type: att.mime || 'application/octet-stream' });
                 const url = URL.createObjectURL(blob);
@@ -669,7 +686,6 @@
             setTimeout(() => {
                 if (ongoingSends.has(sendKey)) {
                     ongoingSends.delete(sendKey);
-                    // also remove sendLock just in case
                     sendLock.delete(sendKey);
                 }
             }, ms);
@@ -679,7 +695,6 @@
 
         // SEND-LOGIC (with 5ms temporary lock + button disable)
         async function sendMessage() {
-            // quick guard: prevent keyboard spam
             if (sendCooldown) {
                 console.warn('Send blocked by short cooldown');
                 return;
@@ -692,27 +707,22 @@
 
             const sendKey = makeSendKey(currentConversationId, text, attachedFile);
 
-            // 1) very short sendLock check (prevents double-call race)
             if (sendLock.has(sendKey)) {
                 console.warn('Duplicate send suppressed for key (sendLock):', sendKey);
                 return;
             }
-            // set ephemeral send lock (5 ms)
             sendLock.add(sendKey);
             setTimeout(() => sendLock.delete(sendKey), 5);
 
-            // disable button & keyboard send briefly (5ms)
             sendCooldown = true;
             if (sendBtn) sendBtn.disabled = true;
             setTimeout(() => { sendCooldown = false; if (sendBtn) sendBtn.disabled = false; }, 5);
 
-            // 2) check ongoingSends map to avoid duplicate in-flight identical sends
             if (ongoingSends.has(sendKey)) {
                 console.warn('Duplicate send suppressed for key (ongoing):', sendKey);
                 return;
             }
 
-            // short anti-repeat window (user asked 5ms specifically)
             const nowTs = Date.now();
             const lastTs = lastSendTimes.get(sendKey) || 0;
             const MIN_REPEAT_MS = 5;
@@ -722,9 +732,7 @@
             }
             lastSendTimes.set(sendKey, nowTs);
 
-            // mark in-flight
             ongoingSends.set(sendKey, true);
-            // ensure fallback release so it doesn't stay forever
             releaseOngoingSendKeyWithTimeout(sendKey, 10000);
 
             const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -744,7 +752,16 @@
                     _tempId: tempId
                 };
 
-                appendMessageToDOM(optimisticMsg);
+                // append optimistic to DOM and cache
+                const domEl = appendMessageToDOM(optimisticMsg);
+                appendMessageToConversationCache(currentConversationId, {
+                    id: null,
+                    senderId: optimisticMsg.senderId,
+                    ts: optimisticMsg.ts,
+                    textEncrypted: optimisticMsg.text,
+                    _tempId: tempId,
+                    attachments: optimisticMsg.attachments || []
+                });
 
                 messageInput.value = '';
                 messageInput.placeholder = 'Nachricht ...';
@@ -799,6 +816,8 @@
                                 markMessageFailed(tempId);
                             } else {
                                 updateTempMessageWithServer(tempId, ack.message);
+                                // update cache: replace temp by server id
+                                appendMessageToConversationCache(currentConversationId, ack.message);
                                 loadContacts().catch(() => { });
                             }
                         } finally {
@@ -812,6 +831,7 @@
                             markMessageFailed(tempId);
                         } else {
                             updateTempMessageWithServer(tempId, resp.body.message || resp.body);
+                            appendMessageToConversationCache(currentConversationId, resp.body.message || resp.body);
                             loadContacts().catch(() => { });
                         }
                     } catch (e) {
@@ -843,155 +863,26 @@
                 if (!serverMsg || !serverMsg.id) return;
                 const exists = messagesContainer.querySelector(`[data-msg-id="${serverMsg.id}"]`);
                 if (exists) return;
-                const text = serverMsg.unencrypted ? (serverMsg.textEncrypted || '') : '(verschlüsselt)';
-                const msg = { senderId: serverMsg.senderId, text, attachments: serverMsg.attachments || [], ts: serverMsg.ts, _id: serverMsg.id };
+                // render server message (use renderMessages to ensure correct decryption)
+                const msg = { senderId: serverMsg.senderId, textEncrypted: serverMsg.textEncrypted || serverMsg.text || '', attachments: serverMsg.attachments || [], ts: serverMsg.ts, _id: serverMsg.id };
                 renderMessages([msg], { autoScroll: true });
                 return;
             }
-            elTemp.dataset.msgId = serverMsg.id || '';
-            delete elTemp.dataset.tempId;
+            elTemp.setAttribute('data-msg-id', serverMsg.id || '');
+            elTemp.removeAttribute('data-temp-id');
             const timeEl = elTemp.querySelector('.message-time');
             if (timeEl) timeEl.textContent = formatTime(serverMsg.ts);
             elTemp.classList.remove('send-failed');
+            // update cache as well
+            appendMessageToConversationCache(currentConversationId, serverMsg);
         }
 
-        window.sendMessage = sendMessage;
-        sendBtn && sendBtn.addEventListener('click', (e) => { e.preventDefault(); sendMessage(); });
-        messageInput && messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
-
-        if (socket) {
-            socket.on('message', async (data) => {
-                try {
-                    if (!data || !data.message) return;
-                    const incoming = data.message;
-                    const convId = data.conversationId;
-
-                    // Belongs to current conversation?
-                    if (currentConversationId && convId === currentConversationId) {
-
-                        // Unencrypted messages (server-flag)
-                        if (incoming.unencrypted) {
-                            const clientId = incoming.clientId || incoming.clientid || null;
-                            if (clientId) {
-                                const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
-                                if (tempEl) {
-                                    tempEl.dataset.msgId = incoming.id || '';
-                                    delete tempEl.dataset.tempId;
-                                    const txtEl = tempEl.querySelector('.message-text');
-                                    if (txtEl) txtEl.textContent = incoming.textEncrypted || txtEl.textContent;
-                                    const timeEl = tempEl.querySelector('.message-time');
-                                    if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
-                                    tempEl.classList.remove('send-failed');
-                                    try { api.markRead(currentConversationId, userId); } catch (e) { }
-                                    loadContacts().catch(() => { });
-                                    return;
-                                }
-                            }
-
-                            if (incoming.id) {
-                                const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
-                                if (exists) return;
-                            }
-
-                            const msgObj = { senderId: incoming.senderId, text: incoming.textEncrypted || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
-                            appendMessageToDOM(msgObj);
-                            try { api.markRead(currentConversationId, userId); } catch (e) { }
-                            loadContacts().catch(() => { });
-                            return;
-                        }
-
-                        // Encrypted flow: always try to decrypt using helper
-                        const clientId = incoming.clientId || incoming.clientid || null;
-                        let text = '';
-                        try {
-                            text = await decryptIncomingText(incoming);
-                        } catch (e) {
-                            console.warn('decryptIncomingText error', e);
-                            text = '(verschlüsselt)';
-                        }
-
-                        if (clientId) {
-                            const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
-                            if (tempEl) {
-                                tempEl.dataset.msgId = incoming.id || '';
-                                delete tempEl.dataset.tempId;
-                                const txtEl = tempEl.querySelector('.message-text');
-                                if (txtEl) txtEl.textContent = text || txtEl.textContent;
-                                const timeEl = tempEl.querySelector('.message-time');
-                                if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
-                                tempEl.classList.remove('send-failed');
-                                try { api.markRead(currentConversationId, userId); } catch (e) { }
-                                loadContacts().catch(() => { });
-                                return;
-                            }
-                        }
-
-                        if (incoming.id) {
-                            const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
-                            if (exists) return;
-                        }
-
-                        const msgObj = { senderId: incoming.senderId, text: text || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now() };
-                        appendMessageToDOM(msgObj);
-                        try { api.markRead(currentConversationId, userId); } catch (e) { }
-                        loadContacts().catch(() => { });
-                        return;
-                    }
-
-                    // otherwise: refresh contacts (new messages)
-                    await loadContacts();
-                } catch (e) {
-                    console.error('socket message handler', e);
-                }
-            });
-
-            socket.on('contacts_update', async (data) => {
-                try {
-                    await loadContacts();
-                    const updatedUserId = data && (data.userId || data.contactId || data.updatedUserId);
-                    if (updatedUserId && currentContact && updatedUserId === currentContact.id) {
-                        try {
-                            const k = await getOrCreateAesKeyForPeer(currentContact.id);
-                            if (k) {
-                                const lockEl = document.querySelector(`#contact-${currentContact.id} .contact-lock`);
-                                if (lockEl) lockEl.textContent = '🔒';
-                            }
-                        } catch (e) { /* ignore */ }
-                    }
-                } catch (e) {
-                    console.error('contacts_update handler', e);
-                }
-            });
-
-            socket.on('conversation_update', () => { loadContacts().catch(() => { }); });
-            socket.on('connect', () => { console.log('[socket] connected', socket.id); });
-            socket.on('disconnect', (reason) => { console.log('[socket] disconnected', reason); });
-            socket.on('connect_error', (err) => {
-                console.error('[socket] connect_error:', err && err.message ? err.message : err);
-                const msg = err && err.message ? err.message : 'Socket-Fehler';
-                switch (msg) {
-                    case 'AUTH_NO_TOKEN':
-                        alert('Socket-Verbindung fehlgeschlagen: Kein Login-Token vorhanden.');
-                        break;
-                    case 'AUTH_INVALID_TOKEN':
-                        alert('Socket-Verbindung fehlgeschlagen: Login abgelaufen oder ungültig.');
-                        localStorage.removeItem('user');
-                        window.location.href = '/chat/login/login.html';
-                        break;
-                    case 'AUTH_INTERNAL_ERROR':
-                        alert('Interner Serverfehler bei der Socket-Anmeldung.');
-                        break;
-                    default:
-                        console.warn('Socket-Fehler:', msg);
-                }
-            });
-        }
-
+        // appendMessageToDOM remains for optimistic messages but uses simpler attribute names
         function appendMessageToDOM(m) {
             if (!messagesContainer) return;
             const container = el('div', 'message-container' + (m.senderId === userId ? ' my' : ''));
-            if (m._tempId) container.dataset.tempId = m._tempId;
-            if (m._id) container.dataset.msgId = m._id;
+            if (m._tempId) container.setAttribute('data-temp-id', m._tempId);
+            if (m._id) container.setAttribute('data-msg-id', m._id);
 
             const avatarImg = el('img', 'message-avatar');
             avatarImg.src = '/chat/sources/avatars/avatar.png';
@@ -1045,6 +936,7 @@
 
             messagesContainer.appendChild(container);
             requestAnimationFrame(() => { messagesContainer.scrollTop = messagesContainer.scrollHeight; });
+
             return container;
         }
 
@@ -1072,7 +964,7 @@
             if (!aesKey) {
                 const uresp = await api.getUser(otherId);
                 if (uresp && uresp.ok && uresp.body && uresp.body.user && uresp.body.user.publicKey) {
-                    aesKey = await getOrCreateAesKeyForPeer(otherId); // should succeed now if publicKey exists
+                    aesKey = await getOrCreateAesKeyForPeer(otherId);
                 }
             }
 
@@ -1090,5 +982,221 @@
                 return '(verschlüsselt)';
             }
         }
+
+        // Socket handlers (update cache on incoming)
+        if (socket) {
+            socket.on('message', async (data) => {
+                try {
+                    if (!data || !data.message) return;
+                    const incoming = data.message;
+                    const convId = data.conversationId;
+
+                    // Belongs to current conversation?
+                    if (currentConversationId && convId === currentConversationId) {
+
+                        // Unencrypted messages (server-flag)
+                        if (incoming.unencrypted) {
+                            const clientId = incoming.clientId || incoming.clientid || null;
+                            if (clientId) {
+                                const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
+                                if (tempEl) {
+                                    tempEl.setAttribute('data-msg-id', incoming.id || '');
+                                    tempEl.removeAttribute('data-temp-id');
+                                    const txtEl = tempEl.querySelector('.message-text');
+                                    if (txtEl) txtEl.textContent = incoming.textEncrypted || txtEl.textContent;
+                                    const timeEl = tempEl.querySelector('.message-time');
+                                    if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
+                                    tempEl.classList.remove('send-failed');
+                                    try { api.markRead(currentConversationId, userId); } catch (e) { }
+                                    // update cache
+                                    appendMessageToConversationCache(currentConversationId, incoming);
+                                    loadContacts().catch(() => { });
+                                    return;
+                                }
+                            }
+
+                            if (incoming.id) {
+                                const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
+                                if (exists) return;
+                            }
+
+                            const msgObj = { senderId: incoming.senderId, text: incoming.textEncrypted || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now(), _id: incoming.id };
+                            appendMessageToDOM(msgObj);
+                            appendMessageToConversationCache(convId, incoming);
+                            try { api.markRead(currentConversationId, userId); } catch (e) { }
+                            loadContacts().catch(() => { });
+                            return;
+                        }
+
+                        // Encrypted flow: always try to decrypt using helper
+                        const clientId = incoming.clientId || incoming.clientid || null;
+                        let text = '';
+                        try {
+                            text = await decryptIncomingText(incoming);
+                        } catch (e) {
+                            console.warn('decryptIncomingText error', e);
+                            text = '(verschlüsselt)';
+                        }
+
+                        if (clientId) {
+                            const tempEl = messagesContainer.querySelector(`[data-temp-id="${clientId}"]`);
+                            if (tempEl) {
+                                tempEl.setAttribute('data-msg-id', incoming.id || '');
+                                tempEl.removeAttribute('data-temp-id');
+                                const txtEl = tempEl.querySelector('.message-text');
+                                if (txtEl) txtEl.textContent = text || txtEl.textContent;
+                                const timeEl = tempEl.querySelector('.message-time');
+                                if (timeEl) timeEl.textContent = formatTime(incoming.ts || Date.now());
+                                tempEl.classList.remove('send-failed');
+                                try { api.markRead(currentConversationId, userId); } catch (e) { }
+                                appendMessageToConversationCache(currentConversationId, incoming);
+                                loadContacts().catch(() => { });
+                                return;
+                            }
+                        }
+
+                        if (incoming.id) {
+                            const exists = messagesContainer.querySelector(`[data-msg-id="${incoming.id}"]`);
+                            if (exists) return;
+                        }
+
+                        // render using renderMessages so decryption and attachments handled consistently
+                        const msgObj = { senderId: incoming.senderId, textEncrypted: incoming.textEncrypted || '', attachments: incoming.attachments || [], ts: incoming.ts || Date.now(), _id: incoming.id };
+                        renderMessages([msgObj], { autoScroll: true });
+                        appendMessageToConversationCache(convId, incoming);
+                        try { api.markRead(currentConversationId, userId); } catch (e) { }
+                        loadContacts().catch(() => { });
+                        return;
+                    }
+
+                    // otherwise: refresh contacts (new messages)
+                    await loadContacts();
+                } catch (e) {
+                    console.error('socket message handler', e);
+                }
+            });
+
+            socket.on('contacts_update', async (data) => {
+                try {
+                    await loadContacts();
+                    const updatedUserId = data && (data.userId || data.contactId || data.updatedUserId);
+                    if (updatedUserId && currentContact && updatedUserId === currentContact.id) {
+                        try {
+                            const k = await getOrCreateAesKeyForPeer(currentContact.id);
+                            if (k) {
+                                const lockEl = document.querySelector(`#contact-${currentContact.id} .contact-lock`);
+                                if (lockEl) lockEl.textContent = '🔒';
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                } catch (e) {
+                    console.error('contacts_update handler', e);
+                }
+            });
+
+            socket.on('conversation_update', () => { loadContacts().catch(() => { }); });
+            socket.on('connect', () => { console.log('[socket] connected', socket.id); uploadPublicKeyAfterInit().catch(() => { }); });
+            socket.on('disconnect', (reason) => { console.log('[socket] disconnected', reason); });
+            socket.on('connect_error', (err) => {
+                console.error('[socket] connect_error:', err && err.message ? err.message : err);
+                const msg = err && err.message ? err.message : 'Socket-Fehler';
+                switch (msg) {
+                    case 'AUTH_NO_TOKEN':
+                        alert('Socket-Verbindung fehlgeschlagen: Kein Login-Token vorhanden.');
+                        break;
+                    case 'AUTH_INVALID_TOKEN':
+                        alert('Socket-Verbindung fehlgeschlagen: Login abgelaufen oder ungültig.');
+                        localStorage.removeItem('user');
+                        window.location.href = '/chat/login/login.html';
+                        break;
+                    case 'AUTH_INTERNAL_ERROR':
+                        alert('Interner Serverfehler bei der Socket-Anmeldung.');
+                        break;
+                    default:
+                        console.warn('Socket-Fehler:', msg);
+                }
+            });
+        }
+
+        // OPEN conversation loads from server; if server fails, fallback to cached conversation
+        async function openConversation(contact) {
+            try {
+                currentContact = contact;
+                if (headerName) headerName.textContent = contact.nickname || contact.username || contact.id;
+                if (headerStatus) headerStatus.textContent = 'Online';
+
+                try {
+                    const k = await getOrCreateAesKeyForPeer(contact.id);
+                    if (k) {
+                        const lockEl = document.querySelector(`#contact-${contact.id} .contact-lock`);
+                        if (lockEl) lockEl.textContent = '🔒';
+                    }
+                } catch (e) { /* ignore */ }
+
+                let convId = contact.conversationId;
+                if (!convId) {
+                    const convsResp = await api.getConversationsForUser(userId);
+                    if (convsResp && convsResp.ok && convsResp.body && convsResp.body.conversations) {
+                        const found = (convsResp.body.conversations || []).find(c => (c.members || []).includes(contact.id));
+                        if (found) convId = found.id;
+                    }
+                }
+                if (!convId) {
+                    currentConversationId = null;
+                    if (messagesContainer) messagesContainer.innerHTML = '';
+                    return;
+                }
+                currentConversationId = convId;
+
+                if (socket && socket.connected) socket.emit('join_conv', currentConversationId, () => { });
+
+                // try server first, fallback to cache
+                let resp = null;
+                try {
+                    resp = await api.getConversation(convId);
+                } catch (e) { resp = null; }
+
+                let conv = null;
+                if (resp && resp.ok && resp.body && resp.body.conversation) {
+                    conv = resp.body.conversation;
+                    saveCachedConversation(conv);
+                } else {
+                    const cached = getCachedConversation(convId);
+                    if (cached) {
+                        conv = { id: cached.id, members: cached.members || [], messages: cached.messages || [] };
+                    } else {
+                        // nothing to show
+                        if (messagesContainer) messagesContainer.innerHTML = '';
+                        return;
+                    }
+                }
+
+                // render conversation messages (let renderMessages handle decryption)
+                const msgsForRender = (conv.messages || []).map(m => {
+                    // unify fields: server might store textEncrypted or text
+                    return {
+                        _id: m.id || m._id || m._msgId || null,
+                        _tempId: m.clientId || m.clientid || m._tempId || null,
+                        senderId: m.senderId || m.from,
+                        textEncrypted: m.textEncrypted || m.text || m.cipher || null,
+                        iv: m.iv || m.ivB64 || null,
+                        attachments: m.attachments || [],
+                        ts: m.ts || m.createdAt || Date.now(),
+                        unencrypted: !!m.unencrypted
+                    };
+                });
+
+                await renderMessages(msgsForRender, { autoScroll: true });
+                try { api.markRead(convId, userId); } catch (e) { }
+                await loadContacts();
+            } catch (e) {
+                console.error('openConversation error', e);
+            }
+        }
+
+        window.sendMessage = sendMessage;
+        sendBtn && sendBtn.addEventListener('click', (e) => { e.preventDefault(); sendMessage(); });
+        messageInput && messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+
     });
 })();
