@@ -1,5 +1,5 @@
-const API_URL = window.API_URL || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
-const SOCKET_URL = window.SOCKET_URL || 'https://rhythm-flu-portal-vehicle.trycloudflare.com';
+const API_URL = window.API_URL || 'https://variety-latitude-cooperative-symbols.trycloudflare.com';
+const SOCKET_URL = window.SOCKET_URL || 'https://variety-latitude-cooperative-symbols.trycloudflare.com';
 const SOCKET_IO_CDN = 'https://cdn.socket.io/4.7.1/socket.io.min.js';
 
 function loadSocketIoClientIfNeeded() {
