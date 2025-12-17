@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.emit('login', { username, password }, async (resp) => {
                 console.log('[client] socket login resp', resp);
                 if (!resp || !resp.ok) {
-                    document.getElementById("error").innerHTML = "Login fehlgeschlagen: " + (resp && resp.error ? resp.error : 'ungueltig');
+                    document.getElementById("error").innerHTML = "Login fehlgeschlagen: " + (resp && resp.error ? resp.error : 'ungültig');
                     socket.disconnect();
                     return;
                 }

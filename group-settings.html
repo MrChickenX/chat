@@ -1,0 +1,89 @@
+<div class="group-menu">
+    <header>
+        <a class="profile-title">Gruppeneinstellungen</a>
+    </header>
+    <main>
+        <div class="setting">
+            <div class="group-infos">
+                <img id="group-avatar" class="group-avatar" src="sources/avatars/avatar.png">
+                <div class="group-name">
+                    <a class="setting-title" id="group-name">Klassenchat</a>
+                    <button class="btn-icon" id="edit-group-name-btn"><svg class="svg-icons"
+                            xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960">
+                            <path
+                                d="M120-120v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm584-528 56-56-56-56-56 56 56 56Z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="setting-content">
+                <div id="group-users" class="group-users col1-3">
+                    <a class="setting-text">Mitglieder:</a>
+                    <div class="table">
+                        <div class="group-contact">
+                            <img class="avatar" src="/chat/sources/avatars/avatar.png">
+                            <div>
+                                <a class="contact-name">Alex <a class="admin">ADMIN</a></a>
+                                <button class="btn-icon" id="delete-group-user"><svg xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 -960 960 960">
+                                        <path
+                                            d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm80-160h80v-360h-80v360Zm160 0h80v-360h-80v360Z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="group-contact">
+                            <img class="avatar" src="/chat/sources/avatars/avatar.png">
+                            <div>
+                                <a class="contact-name">Klassenkamarad</a>
+                                <button class="btn-icon" id="delete-group-user"><svg xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 -960 960 960">
+                                        <path
+                                            d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm80-160h80v-360h-80v360Zm160 0h80v-360h-80v360Z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="group-contact">
+                            <img class="avatar" src="/chat/sources/avatars/avatar.png">
+                            <div>
+                                <input class="add-contact-name" placeholder="Benutzer hinzufügen ...">
+                                <button class="btn-icon" id="add-group-user"><svg xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 -960 960 960">
+                                        <path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="setting-content">
+                <a class="setting-text">Erstellt:</a>
+                <span id="created-date">17.12.2025</span>
+            </div>
+        </div>
+        <div class="setting">
+            <a class="setting-title">Gruppe verlassen</a>
+            <div class="setting-content">
+                <a class="setting-text col1-2">Verlasse die Gruppe. Andere werden benachrichtigt.</a>
+                <button class="settings-btn danger col3" id="leave-group">Gruppe verlassen</button>
+            </div>
+        </div>
+        <div class="setting">
+            <a class="setting-title">Chatverlauf löschen</a>
+            <div class="setting-content">
+                <a class="setting-text col1-2">Löschen Sie den Chatverlauf im diesen Gruppenchat.</a>
+                <button class="settings-btn danger col3" id="chat-msg-delete">Löschen</button>
+            </div>
+        </div>
+        <div class="setting">
+            <a class="setting-title">Chat löschen</a>
+            <div class="setting-content">
+                <a class="setting-text col1-2">Löschen Sie den Chat. Alle Nachrichten, Dateien, usw.
+                    werden dauerhaft gelöscht.</a>
+                <button class="settings-btn danger col3" id="chat-delete">Löschen</button>
+            </div>
+        </div>
+    </main>
+</div>

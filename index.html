@@ -480,6 +480,8 @@
 
         .setting {
             margin-top: 12px;
+            align-items: center;
+            align-content: center;
         }
 
         .setting-content.no-col3>*:nth-child(2) {
@@ -490,14 +492,18 @@
             font-weight: bold;
             font-size: 24px;
             margin-bottom: 4px;
+            padding: 6px;
         }
 
         .setting-content,
         .profile-content {
             display: grid;
-            grid-template-columns: 60% 20% 96px;
-            align-items: center;
-            margin-top: 8px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+            padding: 6px;
+            border-bottom: 1.5px solid var(--border-color);
+            align-self: center;
+
         }
 
         .settings-btn {
@@ -514,7 +520,7 @@
         }
 
         .settings-btn:hover {
-            background: #3ac1ff;
+            background: var();
         }
 
         .danger {
@@ -730,6 +736,114 @@
 
         .welcome ol li::marker {
             font-weight: bold;
+        }
+
+        /* ===========
+        GROUP SETTINGS
+        =========== */
+
+        .group-menu {
+            margin: 12px;
+        }
+
+        .svg-icons {
+            fill: var(--font-color);
+            width: 20px;
+            height: 20px;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            width: 32px;
+        }
+
+        .btn-icon:hover {
+            background: rgba(0, 174, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .group-avatar {
+            width: 96px;
+            height: 96px;
+            border-radius: 100%;
+            margin-bottom: 8px;
+            justify-self: center;
+        }
+
+        .group-infos {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+
+        .table {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .admin {
+            font-size: 12px;
+            color: var(--danger);
+            margin-left: 4px;
+            font-weight: bold;
+            border: 1.5px solid var(--danger);
+            padding: 2px;
+            border-radius: 4px;
+        }
+
+        .group-contact {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 2px;
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .group-contact>div {
+            display: grid;
+            grid-template-columns: auto auto 1fr;
+            gap: 4px 8px;
+            width: 100%;
+            align-items: center;
+        }
+
+        .group-contact:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .group-users {
+            width: 100%;
+        }
+
+        .col2-3 {
+            grid-column: span 2 / span 2;
+        }
+
+        .col1-3 {
+            grid-column: span 3 / span 3;
+            grid-row-start: 3;
+        }
+
+        .col1-2 {
+            grid-column: span 2 / span 2;
+            grid-row-start: 4;
+        }
+
+        .col3 {
+            grid-column-start: 3;
+            grid-row-start: 4;
+        }
+
+        .add-contact-name {
+            border: 1.5px solid var(--border-color);
+            border-radius: 4px;
+            padding: 4px;
         }
     </style>
 </head>
@@ -1320,11 +1434,6 @@
             });
         }
 
-        function clearVarsForTheme(themeVars = {}) {
-            // Optional: falls du Variablen zuruecksetzen willst, die vorher gesetzt wurden,
-            // kannst du hier keys loeschen oder auf default setzen. Aktuell belassen wir sie.
-        }
-
         function selectTheme(box, withTransition = true) {
             if (!box) return;
             const boxes = group.querySelectorAll('.theme-box');
@@ -1470,67 +1579,6 @@
         initSidebar(settings);
         initSidebar(profile);
     }
-
-    /* ===========
-    SETTINGS COLUMN
-    =========== */
-
-    // z.B. public/client-chat.js oder <script> ganz am Ende vor </body>
-    document.addEventListener('DOMContentLoaded', () => {
-        function isElementEmptyOrInvisible(el) {
-            if (!el) return true;
-            // Wenn Element selbst display:none ist -> leer
-            const style = getComputedStyle(el);
-            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
-                return true;
-            }
-            // Prüfe auf sichtbare Kinder oder sichtbaren Text
-            // Text (ohne whitespace)
-            if (el.textContent && el.textContent.trim() !== '') return false;
-            // Kinder: irgendein Kind, das sichtbar ist -> nicht leer
-            for (const child of el.children) {
-                const cs = getComputedStyle(child);
-                if (cs.display !== 'none' && cs.visibility !== 'hidden' && child.textContent.trim() !== '') {
-                    return false;
-                }
-                // falls child ein IMG oder BUTTON etc. (auch ohne text) -> zählt als Inhalt
-                if (child.tagName.toLowerCase() === 'img' || child.tagName.toLowerCase() === 'button' || child.tagName.toLowerCase() === 'svg') {
-                    return true ? false : false; // keep flow (we'll detect below)
-                }
-            }
-            // Spezialfall: <button> oder <img> als direkter dritter child sollten nicht als "leer" gelten
-            // So: if element has an interactive/graphic child, treat as non-empty
-            if (el.querySelector('img, svg, button, input, textarea, a')) return false;
-
-            // no visible text and no meaningful children -> empty
-            return true;
-        }
-
-        function updateAllSettings() {
-            document.querySelectorAll('.setting-content').forEach(container => {
-                const third = container.children[2]; // 0-based: 0=col1, 1=col2, 2=col3
-                const thirdEmpty = isElementEmptyOrInvisible(third);
-                if (thirdEmpty) container.classList.add('no-col3');
-                else container.classList.remove('no-col3');
-            });
-        }
-
-        // initial run
-        updateAllSettings();
-
-        // optional: observe dynamic changes inside .setting (so it updates if content is injected later)
-        const observer = new MutationObserver((mutations) => {
-            // cheap: whenever mutation occurs, re-evaluate all
-            updateAllSettings();
-        });
-
-        document.querySelectorAll('.setting-content').forEach(el => {
-            observer.observe(el, { childList: true, subtree: true, characterData: true });
-        });
-
-        // Wenn du später neue .setting-content nachlädst, rufe updateAllSettings() und observer.observe(...) erneut.
-    });
-
 
 </script>
 
